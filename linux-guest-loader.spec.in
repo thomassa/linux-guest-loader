@@ -1,0 +1,40 @@
+%{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
+
+Summary: Bootloader for EL-based distros that support Xen
+Name: linux-guest-loader
+Version: @LGL_VERSION@
+Release: @LGL_RELEASE@
+Source: %{name}-%{version}.tar.gz
+License: GPL
+Group: Applications/System
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
+BuildArch: noarch
+ 
+BuildRequires: python-devel python-setuptools
+
+%description
+Bootloader for EL-based distros that support Xen.
+
+%prep
+%setup -q
+
+%build
+%{__python} setup.py build
+ 
+%install
+rm -rf $RPM_BUILD_ROOT
+%{__python} setup.py install -O1 --skip-build --root %{buildroot} --install-scripts /opt/xensource/libexec
+mkdir -p %{buildroot}/usr/bin
+ln -sf /opt/xensource/libexec/eliloader.py %{buildroot}/usr/bin/eliloader
+
+ 
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+/opt/xensource/libexec/*
+/usr/bin/eliloader
+
+
+%changelog
