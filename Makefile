@@ -13,15 +13,19 @@ $(MY_OBJ_DIR)/version.inc:
 	echo LGL_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
 
 LGL_SOURCES := $(wildcard *.py)
+DATA_FILES := $(wildcard $(PROJECT_OUTPUTDIR)/rhel*guest-installer/*initrd-additions*)
+
+PACKAGE_OUTPUT := $(MY_MAIN_PACKAGES)/linux-guest-loader-data-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm
 
 LGL_SPEC := linux-guest-loader.spec
 LGL_SRC_DIR := linux-guest-loader-$(LGL_VERSION)
 LGL_SRC := $(RPM_SOURCESDIR)/linux-guest-loader-$(LGL_VERSION).tar.gz
+DATA_TARBALL := $(RPM_SOURCESDIR)/data.tar.gz
 LGL_SRPM := linux-guest-loader-$(LGL_VERSION)-$(LGL_RELEASE).src.rpm
 LGL_STAMP := $(MY_OBJ_DIR)/.rpmbuild.lgl.stamp
 
 .PHONY: build
-build: $(LGL_STAMP) $(MY_OUTPUT_DIR)/linux-guest-loader.inc $(MY_SOURCES)/MANIFEST
+build: $(LGL_STAMP) $(PACKAGE_OUTPUT) $(MY_OUTPUT_DIR)/linux-guest-loader.inc $(MY_SOURCES)/MANIFEST
 
 $(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP) $(RPM_BUILD_COOKIE)
 	( echo "$(COMPONENT) gpl file $(RPM_SRPMSDIR)/$(LGL_SRPM)" ; \
@@ -59,7 +63,11 @@ $(RPM_SPECSDIR)/%.spec: *.spec.in
 	  < $< \
 	  > $@
 
-$(RPM_SRPMSDIR)/$(LGL_SRPM): $(RPM_DIRECTORIES) $(RPM_SPECSDIR)/$(LGL_SPEC) $(LGL_SRC)
+.SECONDARY: $(DATA_TARBALL)
+$(DATA_TARBALL): $(DATA_FILES)
+	tar zcvf $@ -C $(PROJECT_OUTPUTDIR) `echo $^ | sed -e 's!$(PROJECT_OUTPUTDIR)/!!g'`
+
+$(RPM_SRPMSDIR)/$(LGL_SRPM): $(RPM_DIRECTORIES) $(RPM_SPECSDIR)/$(LGL_SPEC) $(LGL_SRC) $(DATA_TARBALL)
 	$(RPMBUILD) -bs $(RPM_SPECSDIR)/$(LGL_SPEC)
 
 $(LGL_STAMP): $(RPM_SRPMSDIR)/$(LGL_SRPM)
@@ -70,3 +78,6 @@ $(LGL_STAMP): $(RPM_SRPMSDIR)/$(LGL_SRPM)
 	mv -f $(RPM_SPECSDIR)/$(LGL_SPEC).keep $(RPM_SPECSDIR)/$(LGL_SPEC)
 	mv -f $(LGL_SRC).keep $(LGL_SRC)
 	touch $@
+
+$(PACKAGE_OUTPUT): $(MY_MAIN_PACKAGES)/.dirstamp
+	cp -fp $(RPM_RPMSDIR)/noarch/linux-guest-loader-data-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm $@
