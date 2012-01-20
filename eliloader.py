@@ -354,13 +354,20 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
     finally:
         session.logout()
 
-def unpack_cpio_initrd(filename, working_dir, is_compressed = True):
+def unpack_cpio_initrd(filename, working_dir):
     # we'll assume it's a gzipped cpio for now...
     cpio_archive = close_mkstemp(dir = "/tmp", prefix = "initrd-")
-    if is_compressed:
+    gz = open(filename)
+    start = gz.read(2)
+    if start == "\037\213":
+        gz.close()
         gz = gzip.GzipFile(filename)
+    elif start == "\x5d\x00":
+        gz.close()
+        lz = subprocess.Popen(["/usr/bin/lzcat", filename], stdout = subprocess.PIPE)
+        gz = lz.stdout
     else:
-        gz = open(filename)
+        gz.seek(0)
     cpio = subprocess.Popen(["/bin/cpio", "-idu", "--quiet"], cwd = working_dir,
                             stdin = subprocess.PIPE)
     while True:
@@ -441,8 +448,8 @@ def tweak_initrd(filename):
             raise SupportPackageMissing, "Dom0 does not contain a required file: %s" % cpio_overlay
 
         # unpack the vendor initrd, then unpack our changes over it:
-        unpack_cpio_initrd(filename, working_dir, True)
-        unpack_cpio_initrd(cpio_overlay, working_dir, False)
+        unpack_cpio_initrd(filename, working_dir)
+        unpack_cpio_initrd(cpio_overlay, working_dir)
 
         # now repack to make the final image:
         initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
@@ -461,7 +468,7 @@ def tweak_initrd(filename):
         # unpack the vendor initrd, then unpack our changes over it:
         initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
         mount_ext2_initrd(filename, initrd_path, working_dir)
-        unpack_cpio_initrd(cpio_overlay, working_dir, False)
+        unpack_cpio_initrd(cpio_overlay, working_dir)
         umount(working_dir)
 
     return initrd_path
