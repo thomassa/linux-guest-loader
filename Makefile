@@ -9,7 +9,7 @@ include $(B_BASE)/rpmbuild.mk
 $(MY_OBJ_DIR)/version.inc:
 	$(version-makefile) > $@
 	$(call hg_cset_number,$(REPONAME)) >> $@
-	echo LGL_VERSION := \$$\(PRODUCT_VERSION\) >> $@
+	echo LGL_VERSION := \$$\(PLATFORM_VERSION\) >> $@
 	echo LGL_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
 
 LGL_SOURCES := $(wildcard *.py)
