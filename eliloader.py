@@ -202,12 +202,13 @@ class NfsRepo:
             rest = repo[6:]
             if not "/" in rest:
                 raise InvalidSource, "NFS path was not in a valid format"
-            server, path = rest.split("/", 1)
+            server, dir = rest.split("/", 1)
+            dir = "/" + dir
             server = server.rstrip(":")
-            repo = "nfs:%s:/%s" % (server, path)
+        else:
+            # work out the components:
+            [_, server, dir] = repo.split(':', 2)
 
-        # work out the components:
-        [_, server, dir] = repo.split(':')
         if dir[0] != '/':
             raise InvalidSource, "Directory part of NFS path was not an absolute path."
 
@@ -399,7 +400,6 @@ def md5sum(filename):
     fd = open(filename, "r")
     try:
         sumobj = md5.new()
-        data = ""
         while True:
             data = fd.read(1024 * 1024)
             if data == "":
