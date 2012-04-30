@@ -596,6 +596,9 @@ def debian_first_boot_handler(vm, repo_url, other_config):
                        'x86_64': 'install.amd/xen/' }
         vmlinuz_url = repo_url + cdrom_dirs[other_config['install-arch']] + "vmlinuz"
         ramdisk_url = repo_url + cdrom_dirs[other_config['install-arch']] + "initrd.gz"
+        if not fetchFile(vmlinuz_url, not_really=True):
+            vmlinuz_url = repo_url + "install/vmlinuz"
+            ramdisk_url = repo_url + "install/initrd.gz"
     else:
         boot_dir = "dists/%s/main/installer-%s/current/images/netboot/xen/" % (other_config['debian-release'], other_config['install-arch'])
         vmlinuz_url = repo_url + boot_dir + "vmlinuz"
