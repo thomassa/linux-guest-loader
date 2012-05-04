@@ -591,11 +591,14 @@ def debian_first_boot_handler(vm, repo_url, other_config):
             "and this is required for the selected distribution type."
 
     if other_config['install-repository'] == "cdrom":
-        cdrom_dirs = { 'i386': 'install.386/xen/',
-                       'amd64': 'install.amd/xen/',
-                       'x86_64': 'install.amd/xen/' }
-        vmlinuz_url = repo_url + cdrom_dirs[other_config['install-arch']] + "vmlinuz"
-        ramdisk_url = repo_url + cdrom_dirs[other_config['install-arch']] + "initrd.gz"
+        cdrom_dirs = { 'i386': 'install.386/',
+                       'amd64': 'install.amd/',
+                       'x86_64': 'install.amd/' }
+        vmlinuz_url = repo_url + cdrom_dirs[other_config['install-arch']] + "xen/vmlinuz"
+        ramdisk_url = repo_url + cdrom_dirs[other_config['install-arch']] + "xen/initrd.gz"
+        if not fetchFile(vmlinuz_url, not_really=True):
+            vmlinuz_url = repo_url + cdrom_dirs[other_config['install-arch']] + "vmlinuz"
+            ramdisk_url = repo_url + cdrom_dirs[other_config['install-arch']] + "initrd.gz"
         if not fetchFile(vmlinuz_url, not_really=True):
             vmlinuz_url = repo_url + "install/vmlinuz"
             ramdisk_url = repo_url + "install/initrd.gz"
