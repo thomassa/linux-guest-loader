@@ -603,7 +603,10 @@ def debian_first_boot_handler(vm, repo_url, other_config):
             vmlinuz_url = repo_url + "install/vmlinuz"
             ramdisk_url = repo_url + "install/initrd.gz"
     else:
-        boot_dir = "dists/%s/main/installer-%s/current/images/netboot/xen/" % (other_config['debian-release'], other_config['install-arch'])
+        comp = repo_url.split('/dists/', 1)
+        if len(comp) != 2 or comp[1].replace('/','') == "":
+            repo_url += "dists/%s/" % other_config['debian-release']
+        boot_dir = "main/installer-%s/current/images/netboot/xen/" % other_config['install-arch']
         vmlinuz_url = repo_url + boot_dir + "vmlinuz"
         ramdisk_url = repo_url + boot_dir + "initrd.gz"
 
