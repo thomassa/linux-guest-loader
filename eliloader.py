@@ -899,7 +899,7 @@ def main():
         if opt in ["--args", "--extra_args", "--default_args"]:
             args += val + " "
 
-    if len(mandargs) != 1:
+    if len(mandargs) < 1:
         raise UsageError
 
     img = mandargs[0]
