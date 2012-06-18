@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # Copyright (c) 2011 Citrix Systems, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
@@ -284,6 +284,10 @@ def fetchFile(source, dest = None, not_really = False):
         # Actually get the file
         try:
             fd = urllib2.urlopen(source)
+            try:
+                length = int(fd.info().getheader('content-length', None));
+            except ValueError:
+                length = None
         except OSError, e:
             # file not found? (from file://)
             if e.errno == 2:
@@ -307,10 +311,12 @@ def fetchFile(source, dest = None, not_really = False):
                 raise ResourceNotFound, source
             else:
                 raise
-        fd_dest = open(dest, 'w')
+        fd_dest = open(dest, 'wb')
         shutil.copyfileobj(fd, fd_dest)
-        fd_dest.close()
         fd.close()
+        if length is not None and length != fd_dest.tell():
+            raise IOError("Closed connection during download")
+        fd_dest.close()
     else:
         raise InvalidSource, "Unknown source type."
 
