@@ -51,7 +51,10 @@ import gzip
 import traceback
 import syslog
 import md5
+import re
 import XenAPI
+import xcp.cmd
+import xcp.logger
 
 sys.path.append("/usr/lib/python")
 
@@ -59,6 +62,7 @@ BOOTDIR = "/var/run/xend/boot"
 PYGRUB = "/usr/bin/pygrub"
 
 
+xcp.logger.logToSyslog()
 syslog.openlog("ELILOADER")
 log_details = False
 # Set this if you want to see verbose logging on both me and my pygrubs
@@ -72,8 +76,10 @@ def witter(foo):
     print >>sys.stderr, foo
 
 class PygrubError(Exception):
-    def __init__(self, value):
-        self.value = value
+    def __init__(self, rc, err):
+        # Pygrub reports errors with a Runtime exception.
+        m = re.search('RuntimeError: (.*)$', err)
+        self.value = "Pygrub error (%d): %s" % (rc, m.group(0))
     def __str__(self):
         return repr(self.value)
 
@@ -178,8 +184,7 @@ def mount(dev, mountpoint, options = None, fstype = None):
     cmd.append(dev)
     cmd.append(mountpoint)
 
-    rc = subprocess.Popen(cmd, stdout = subprocess.PIPE,
-                          stderr = subprocess.PIPE).wait()
+    rc = xcp.cmd.runCmd(cmd, False, False)
     if rc != 0:
         raise MountFailureException, cmd
 
@@ -228,7 +233,7 @@ class NfsRepo:
         # os module may have already been unloaded
         import os
         if self.mntpoint:
-            os.system("umount %s" % self.mntpoint)
+            xcp.cmd.runCmd(["umount", self.mntpoint])
             os.rmdir(self.mntpoint)
     
 # Creation of an CdromRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
@@ -252,7 +257,7 @@ class CdromRepo:
         # os module may have already been unloaded
         import os
         if self.mntpoint:
-            os.system("umount %s" % self.mntpoint)
+            xcp.cmd.runCmd(["umount", self.mntpoint])
             os.rmdir(self.mntpoint)
 
 # Modified from host-installer.hg/util.py to support not_really flag
@@ -669,12 +674,11 @@ def pygrub_first_boot_handler(vm_uuid, repo_url, other_config):
         return ret
     
     if other_config['install-repository'] == "cdrom":
-        pygrub = subprocess.Popen([PYGRUB] + sys.argv[1:], stdout=subprocess.PIPE)
-        rc = pygrub.wait()
+        (rc, out, err) = xcp.cmd.runCmd([PYGRUB] + sys.argv[1:], True, True)
         if rc != 0:
             raise InvalidSource, "Error %d running %s" % (rc,PYGRUB)
     
-        output = pygrub_parse(pygrub.stdout.readline())
+        output = pygrub_parse(out)
 
         if not output.has_key('kernel'):
             raise InvalidSource, "No kernel in pygrub output"
@@ -803,11 +807,11 @@ def handle_second_boot(vm, img, args, other_config):
         # If pygrub with no options fails then this must be one of the problematic versions, in
         # which case /we/ need to tell pygrub where to find the kernel and initrd.
 
-        cmd = "pygrub -q -n %s &>/dev/null" % img
-        rc = os.system(cmd)
+        cmd = ["pygrub", "-q", "-n", img]
+        (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
         rc/=256
         if rc > 1:
-            raise PygrubError, str(rc)
+            raise PygrubError, rc, err
 
         if rc != 0:
             # need to emulate domUloader.  This is done by finding a kernel that
@@ -822,11 +826,11 @@ def handle_second_boot(vm, img, args, other_config):
             witter("SLES_LIKE: Pygrub failed, trying again..")
             for k, i in [ ("/%s" % kernel, "/%s" % initrd ), ("/boot/%s" % kernel , "/boot/%s" % initrd ) ]:
                 witter("SLES_LIKE: Trying %s and %s" % (k, i) )
-                cmd = "pygrub -n --kernel %s --ramdisk %s %s &>/dev/null" % (k, i, img)
-                rc = os.system(cmd)
+                cmd = ["pygrub", "-n", "--kernel", k, "--ramdisk", i, img]
+                (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
                 rc/=256
                 if rc > 1:
-                    raise PygrubError, str(rc)
+                    raise PygrubError, rc, err
 
                 if rc == 0:
                     # found it - make the setting permanent:
@@ -942,23 +946,11 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except APILevelException, e:
-        ex = sys.exc_info()
-        err = traceback.format_exception(*ex)
-
-        # print the error out nicely
-        print >>sys.stderr, e.apifmt()
-
-        # now log the traceback to syslog
-        for exline in err:
-            syslog.syslog(syslog.LOG_USER | syslog.LOG_ERR, exline)
-        sys.exit(1)
+        raise RuntimeError, e.apifmt()
     except PygrubError, x:
-        msg = str(x)
-        print >> sys.stderr, msg
-        if log_details: syslog.syslog(syslog.LOG_USER | syslog.LOG_ERR, "Pygrub said:"+ msg)
-        sys.exit(3)
+        raise RuntimeError, str(x)
     except UsageError, e:
         msg = "Invalid usage. Usage: eliloader --vm <vm> <image>"
         print >> sys.stderr, msg
         syslog.syslog(syslog.LOG_USER | syslog.LOG_ERR, msg)
-        sys.exit(2)
+        raise RuntimeError, "Invalid command line arguments."
