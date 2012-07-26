@@ -809,7 +809,6 @@ def handle_second_boot(vm, img, args, other_config):
 
         cmd = ["pygrub", "-q", "-n", img]
         (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
-        rc/=256
         if rc > 1:
             raise PygrubError, rc, err
 
@@ -828,7 +827,6 @@ def handle_second_boot(vm, img, args, other_config):
                 witter("SLES_LIKE: Trying %s and %s" % (k, i) )
                 cmd = ["pygrub", "-n", "--kernel", k, "--ramdisk", i, img]
                 (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
-                rc/=256
                 if rc > 1:
                     raise PygrubError, rc, err
 
