@@ -291,7 +291,7 @@ def fetchFile(source, dest = None, not_really = False):
             fd = urllib2.urlopen(source)
             try:
                 length = int(fd.info().getheader('content-length', None));
-            except ValueError:
+            except (ValueError, TypeError):
                 length = None
         except OSError, e:
             # file not found? (from file://)
