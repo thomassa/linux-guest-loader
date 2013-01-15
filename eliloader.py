@@ -260,7 +260,7 @@ class CdromRepo:
             xcp.cmd.runCmd(["umount", self.mntpoint])
             os.rmdir(self.mntpoint)
 
-# Modified from host-installer.hg/util.py to support not_really flag
+# Modified from host-installer.hg/util.py
 # source may be
 #  http://blah
 #  ftp://blah
@@ -268,62 +268,69 @@ class CdromRepo:
 #
 # Raises ResourceNotFound or InvalidSource.
 #
-# If (not_really == True) do not actually copy the file, 
+def fetchFile(source, dest):
+
+    if source[:5] != 'http:' and source[:5] != 'file:' and source[:4] != 'ftp:':
+        raise InvalidSource, "Unknown source type."
+
+    # This something that can be fetched using urllib2
+
+    # Actually get the file
+    try:
+	fd = urllib2.urlopen(source)
+	try:
+	    length = int(fd.info().getheader('content-length', None));
+	except (ValueError, TypeError):
+	    length = None
+    except OSError, e:
+	# file not found? (from file://)
+	if e.errno == 2:
+	    raise ResourceNotFound, source
+	else:
+	    # something else, we'll re-raise:
+	    raise
+    except urllib2.HTTPError, e:
+	# file not found?
+	if e.code == 404:
+	    raise ResourceNotFound, source
+	else:
+	    # something else, we'll re-raise:
+	    raise
+    except urllib2.URLError, e:
+	# bad hostname, malformed URL, etc.
+	raise ResourceNotFound, source
+    except IOError, e:
+	# file not found? (from ftp://)
+	if e.errno == "ftp error":
+	    raise ResourceNotFound, source
+	else:
+	    raise
+    fd_dest = open(dest, 'wb')
+    shutil.copyfileobj(fd, fd_dest)
+    fd.close()
+    if length is not None and length != fd_dest.tell():
+	raise IOError("Closed connection during download")
+    fd_dest.close()
+
+# Test existence of a file
 # just return True for "exists" or False for "does not exist"
 #
-def fetchFile(source, dest = None, not_really = False):
+# Raises ResourceNotFound or InvalidSource.
+def checkFile(source):
 
-    if source[:5] == 'http:' or source[:5] == 'file:' or source[:4] == 'ftp:':
-        # This something that can be fetched using urllib2:
-
-        if not_really:
-            # We are just testing for existence
-            try:
-                fd = urllib2.urlopen(source)
-                fd.close()
-            except:
-                return False
-            else:
-                return True
-            
-        # Actually get the file
-        try:
-            fd = urllib2.urlopen(source)
-            try:
-                length = int(fd.info().getheader('content-length', None));
-            except (ValueError, TypeError):
-                length = None
-        except OSError, e:
-            # file not found? (from file://)
-            if e.errno == 2:
-                raise ResourceNotFound, source
-            else:
-                # something else, we'll re-raise:
-                raise
-        except urllib2.HTTPError, e:
-            # file not found?
-            if e.code == 404:
-                raise ResourceNotFound, source
-            else:
-                # something else, we'll re-raise:
-                raise
-        except urllib2.URLError, e:
-            # bad hostname, malformed URL, etc.
-            raise ResourceNotFound, source
-        except IOError, e:
-            # file not found? (from ftp://)
-            if e.errno == "ftp error":
-                raise ResourceNotFound, source
-            else:
-                raise
-        fd_dest = open(dest, 'wb')
-        shutil.copyfileobj(fd, fd_dest)
-        fd.close()
-        if length is not None and length != fd_dest.tell():
-            raise IOError("Closed connection during download")
-        fd_dest.close()
-    else:
+    if source[:5] != 'http:' and source[:5] != 'file:' and source[:4] != 'ftp:':
         raise InvalidSource, "Unknown source type."
+
+    # This something that can be fetched using urllib2
+    try:
+        request = urllib2.Request(source)
+	if source[:5] == 'http:':
+	    request.get_method = lambda : 'HEAD'
+	fd = urllib2.urlopen(request)
+	fd.close()
+	return True
+    except StandardError:
+	return False
 
 def close_mkstemp(dir = None, prefix = 'tmp'):
     fd, name = tempfile.mkstemp(dir = dir, prefix = prefix)
@@ -501,7 +508,7 @@ def tweak_bootable_disk(vm):
 
 def rhel_first_boot_handler(vm, repo_url):
 
-    if fetchFile(repo_url + "images/xen/vmlinuz", not_really=True):
+    if checkFile(repo_url + "images/xen/vmlinuz"):
         vmlinuz_suburl = "images/xen/vmlinuz"
         ramdisk_suburl = "images/xen/initrd.img"
     else:
@@ -607,10 +614,10 @@ def debian_first_boot_handler(vm, repo_url, other_config):
                        'x86_64': 'install.amd/' }
         vmlinuz_url = repo_url + cdrom_dirs[other_config['install-arch']] + "xen/vmlinuz"
         ramdisk_url = repo_url + cdrom_dirs[other_config['install-arch']] + "xen/initrd.gz"
-        if not fetchFile(vmlinuz_url, not_really=True):
+        if not checkFile(vmlinuz_url):
             vmlinuz_url = repo_url + cdrom_dirs[other_config['install-arch']] + "vmlinuz"
             ramdisk_url = repo_url + cdrom_dirs[other_config['install-arch']] + "initrd.gz"
-        if not fetchFile(vmlinuz_url, not_really=True):
+        if not checkFile(vmlinuz_url):
             vmlinuz_url = repo_url + "install/vmlinuz"
             ramdisk_url = repo_url + "install/initrd.gz"
     else:
