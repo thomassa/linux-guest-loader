@@ -40,6 +40,7 @@
 import sys
 import subprocess
 import os
+import os.path
 import shutil
 import getopt
 import xmlrpclib
@@ -49,7 +50,7 @@ import tempfile
 import urllib2
 import gzip
 import traceback
-import syslog
+import logging
 import md5
 import re
 import XenAPI
@@ -60,20 +61,11 @@ sys.path.append("/usr/lib/python")
 
 BOOTDIR = "/var/run/xend/boot"
 PYGRUB = "/usr/bin/pygrub"
+DEBUG_SWITCH = "/var/run/nonpersistent/linux-guest-loader.debug"
 
-
-xcp.logger.logToSyslog()
-syslog.openlog("ELILOADER")
-log_details = False
-# Set this if you want to see verbose logging on both me and my pygrubs
 
 never_latch = False
 # Set this if you want 2nd round booting to never stop.
-
-def witter(foo):
-    if log_details:
-        syslog.syslog(syslog.LOG_USER | syslog.LOG_ERR, foo)
-    print >>sys.stderr, foo
 
 class PygrubError(Exception):
     def __init__(self, rc, err):
@@ -200,6 +192,7 @@ class NfsRepo:
     # repo is nfs:server:/path/to/repo or nfs://server/path/to/repo or nfs://server:/path/to/repo
     def __init__(self, repo):
         self.mntpoint = None
+        xcp.logger.debug("Mounting NFS repo " + repo)
 
         # we deal with RHEL-like NFS paths - if it's a SLES one then
         # turn it into something we can understand first:
@@ -242,6 +235,7 @@ class CdromRepo:
     # img is a dev node
     def __init__(self, img):
         # make a mountpoint:
+        xcp.logger.debug("Mounting CD repo " + img)
         self.mntpoint = tempfile.mkdtemp(dir = '/tmp', prefix = 'cdrom-repo-')
         try:
             mount(img, self.mntpoint, fstype = "iso9660", options = ['ro'])
@@ -274,6 +268,7 @@ def fetchFile(source, dest):
         raise InvalidSource, "Unknown source type."
 
     # This something that can be fetched using urllib2
+    xcp.logger.debug("Fetching " + source)
 
     # Actually get the file
     try:
@@ -322,6 +317,7 @@ def checkFile(source):
         raise InvalidSource, "Unknown source type."
 
     # This something that can be fetched using urllib2
+    xcp.logger.debug("Checking " + source)
     try:
         request = urllib2.Request(source)
 	if source[:5] == 'http:':
@@ -368,6 +364,7 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
     session = XenAPI.xapi_local()
     session.login_with_password("", "")
     try:
+        xcp.logger.debug("Switching to " + target_bootloader);
         vm = session.xenapi.VM.get_by_uuid(vm_uuid)
         session.xenapi.VM.set_PV_bootloader(vm, target_bootloader)
     finally:
@@ -375,6 +372,7 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
 
 def unpack_cpio_initrd(filename, working_dir):
     # we'll assume it's a gzipped cpio for now...
+    xcp.logger.debug("Unpacking " + filename)
     cpio_archive = close_mkstemp(dir = "/tmp", prefix = "initrd-")
     gz = open(filename)
     start = gz.read(2)
@@ -398,6 +396,7 @@ def unpack_cpio_initrd(filename, working_dir):
     gz.close()
 
 def mount_ext2_initrd(infile, outfile, working_dir):
+    xcp.logger.debug("Mounting " + infile)
     # we'll assume it's a gzipped ext2 f/s for now...
     fd = open(outfile, "w")
     gz = gzip.GzipFile(infile)
@@ -433,6 +432,8 @@ def mkcpio(working_dir, output_file):
     """ Make a cpio archive containg the files in working_dir, writing the 
     archive to output_file.  It will be uncompressed. """
 
+    xcp.logger.debug("Building initrd from " + working_dir)
+
     # set output_file to be a full path so that we don't create the output
     # file under the new working directory of the cpio process.
     output_file = os.path.realpath(output_file)
@@ -457,9 +458,12 @@ def tweak_initrd(filename):
 
     digest = md5sum(filename)
     initrd_path = None
+
+    xcp.logger.debug(filename + " has MD5 " + digest)
     
     if cpio_initrd_fixups.has_key(digest):
         # we can patch this initrd, let's unpack it to a temporary directory:
+        xcp.logger.debug("Fixup with " + cpio_initrd_fixups[digest])
         working_dir = tempfile.mkdtemp(dir = "/tmp", prefix = "initrd-fixup-")
         cpio_overlay = os.path.join(guest_installer_dir, cpio_initrd_fixups[digest])
         if not os.path.isfile(cpio_overlay):
@@ -829,9 +833,9 @@ def handle_second_boot(vm, img, args, other_config):
                 kernel = 'vmlinuz-xenpae'
                 initrd = 'initrd-xenpae'
 
-            witter("SLES_LIKE: Pygrub failed, trying again..")
+            xcp.logger.debug("SLES_LIKE: Pygrub failed, trying again..")
             for k, i in [ ("/%s" % kernel, "/%s" % initrd ), ("/boot/%s" % kernel , "/boot/%s" % initrd ) ]:
-                witter("SLES_LIKE: Trying %s and %s" % (k, i) )
+                xcp.logger.debug("SLES_LIKE: Trying %s and %s" % (k, i) )
                 cmd = ["pygrub", "-n", "--kernel", k, "--ramdisk", i, img]
                 (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
                 if rc > 1:
@@ -840,7 +844,7 @@ def handle_second_boot(vm, img, args, other_config):
                 if rc == 0:
                     # found it - make the setting permanent:
 
-                    witter("SLES_LIKE: success.")
+                    xcp.logger.debug("SLES_LIKE: success.")
 
                     session = XenAPI.xapi_local()
                     session.login_with_password("", "")
@@ -857,14 +861,14 @@ def handle_second_boot(vm, img, args, other_config):
         raise UnsupportedInstallMethod
 
     pygrub_args = prepend_args + sys.argv[1:]
-    witter("pygrab cmd is:"+ str(pygrub_args))
+    xcp.logger.debug("pygrub cmd is:"+ str(pygrub_args))
 
     # now exec pygrub - hackily call update_rounds since we won't get to
     # run again.
     if not never_latch:
         switchBootloader(vm)
         update_rounds(vm, 2, 2)
-    witter("Launching pygrub for real..")
+    xcp.logger.debug("Launching pygrub for real..")
     os.execv(PYGRUB, prepend_args + sys.argv[1:])
 
 def update_rounds(vm, current_round, rounds_required):
@@ -892,9 +896,14 @@ def update_rounds(vm, current_round, rounds_required):
         session.logout()
 
 def main():
+    if os.path.exists(DEBUG_SWITCH):
+        xcp.logger.logToSyslog(level=logging.DEBUG)
+    else:
+        xcp.logger.logToSyslog()
 
     try:
         argv = sys.argv[1:]
+        xcp.logger.debug(str(argv))
         for a in ['--default_args=', '--extra_args=', '--args=']:
             while a in argv:
                 argv.remove(a)
@@ -957,5 +966,4 @@ if __name__ == "__main__":
     except UsageError, e:
         msg = "Invalid usage. Usage: eliloader --vm <vm> <image>"
         print >> sys.stderr, msg
-        syslog.syslog(syslog.LOG_USER | syslog.LOG_ERR, msg)
         raise RuntimeError, "Invalid command line arguments."
