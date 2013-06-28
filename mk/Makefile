@@ -12,7 +12,7 @@ $(MY_OBJ_DIR)/version.inc:
 	echo LGL_VERSION := \$$\(PLATFORM_VERSION\) >> $@
 	echo LGL_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
 
-LGL_SOURCES := $(wildcard *.py)
+LGL_SOURCES := $(wildcard ../*.py)
 DATA_FILES := $(wildcard $(PROJECT_OUTPUTDIR)/rhel*guest-installer/*initrd-additions*) \
 	$(wildcard $(PROJECT_OUTPUTDIR)/ubuntu*guest-installer/*initrd-additions*)
 
@@ -69,13 +69,13 @@ $(DATA_TARBALL): $(DATA_FILES)
 	tar zcvf $@ -C $(PROJECT_OUTPUTDIR) `echo $^ | sed -e 's!$(PROJECT_OUTPUTDIR)/!!g'`
 
 $(RPM_SRPMSDIR)/$(LGL_SRPM): $(RPM_DIRECTORIES) $(RPM_SPECSDIR)/$(LGL_SPEC) $(LGL_SRC) $(DATA_TARBALL)
-	$(RPMBUILD) -bs $(RPM_SPECSDIR)/$(LGL_SPEC)
+	$(RPMBUILD) -bs --with data $(RPM_SPECSDIR)/$(LGL_SPEC)
 
 $(LGL_STAMP): $(RPM_SRPMSDIR)/$(LGL_SRPM)
 	# work around rpmbuild removing source and spec
 	ln -f $(RPM_SPECSDIR)/$(LGL_SPEC) $(RPM_SPECSDIR)/$(LGL_SPEC).keep
 	ln -f $(LGL_SRC) $(LGL_SRC).keep
-	$(RPMBUILD) --rebuild $(RPM_SRPMSDIR)/$(LGL_SRPM)
+	$(RPMBUILD) --rebuild --with data $(RPM_SRPMSDIR)/$(LGL_SRPM)
 	mv -f $(RPM_SPECSDIR)/$(LGL_SPEC).keep $(RPM_SPECSDIR)/$(LGL_SPEC)
 	mv -f $(LGL_SRC).keep $(LGL_SRC)
 	touch $@
