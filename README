@@ -1,0 +1,5 @@
+This is the repository of linux guest loader, which is a bootloader for booting
+distros from their install media.
+
+To contribute bug fixes and features, email them to the XenServer development
+mailing list (xs-devel@lists.xenserver.org).

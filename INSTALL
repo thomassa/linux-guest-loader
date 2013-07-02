@@ -1,0 +1,22 @@
+There are prerequisites for building a XenServer source release. The build
+environment we use is a CentOS-5.7 and we recommend to use the same. All the
+following must be installed, either by visiting the project webpage or
+installing a pre-built package provided by your OS distributor:
+
+    * GCC
+    * GNU Make
+    * GNU Binutils
+    * RPM build
+    * Redhat rpm config (if debuginfo is required)
+    * Git
+    * Development install of Python (e.g., python-devel)
+    * Python setup (e.g., python-setup)
+
+1. Clone the git repository to /some/path/linux-guest-loader
+2. cd /some/path/linux-guest-loader and run `make`. This will generate the
+    spec file from spec.in and uses the spec file to build the soruce and
+    binary rpms.  The source and binary rpms are output to
+    /some/path/linux-guest-loader/build/SRPMS/,
+    /some/path/linux-guest-loader/build/RPMS/noarch/ respectively.
+3. Install the binary rpm into a XenServer using the following.
+    `rpm -ivh linux-guest-loader-*.rpm`
