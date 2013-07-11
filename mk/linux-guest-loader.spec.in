@@ -37,6 +37,7 @@ mkdir -p %{buildroot}/opt/xensource/packages/files/guest-installer
 %if 0%{?_with_data:1}
 cp -fp data/*/* %{buildroot}/opt/xensource/packages/files/guest-installer
 %endif
+rm -rf %{buildroot}/%{python_sitelib}/*-py*.egg-info
  
 %clean
 rm -rf $RPM_BUILD_ROOT
