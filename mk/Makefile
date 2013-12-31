@@ -13,7 +13,7 @@ $(MY_OBJ_DIR)/version.inc:
 	echo LGL_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
 
 LGL_SOURCES := $(wildcard ../*.py)
-DATA_FILES := $(wildcard $(PROJECT_OUTPUTDIR)/rhel*guest-installer/*initrd-additions*) \
+DATA_FILES := $(wildcard $(PROJECT_OUTPUTDIR)/rhel*/*initrd-additions*) \
 	$(wildcard $(PROJECT_OUTPUTDIR)/ubuntu*guest-installer/*initrd-additions*)
 
 PACKAGE_OUTPUT := $(MY_MAIN_PACKAGES)/linux-guest-loader-data-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm
@@ -52,7 +52,6 @@ clean:
 .SECONDARY: $(LGL_SRC)
 $(LGL_SRC): $(LGL_SOURCES)
 	$(call mkdir_clean,$(MY_OBJ_DIR)/$(LGL_SRC_DIR))
-	mkdir -p $(MY_OBJ_DIR)/$(LGL_SRC_DIR)
 	cp -f $^ $(MY_OBJ_DIR)/$(LGL_SRC_DIR)
 	tar zcf $@ -C $(MY_OBJ_DIR) $(LGL_SRC_DIR)
 	rm -rf $(MY_OBJ_DIR)/$(LGL_SRC_DIR)
