@@ -58,7 +58,7 @@ Group: Applications/System
 This package contains data files to enable installation of specific Linux distros.
 
 %files data
-%defattr(-,root,root)
+%defattr(0644,root,root)
 /opt/xensource/packages/files/guest-installer/*
 %endif
 
