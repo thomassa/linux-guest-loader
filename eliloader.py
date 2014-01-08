@@ -51,13 +51,21 @@ import urllib2
 import gzip
 import traceback
 import logging
-import md5
 import re
 import XenAPI
 import xcp.cmd
 import xcp.logger
 
 sys.path.append("/usr/lib/python")
+
+try:
+    import hashlib
+    def md5_new():
+        return hashlib.md5()
+except ImportError:
+    import md5
+    def md5_new():
+        return md5.new()
 
 BOOTDIR = "/var/run/xend/boot"
 PYGRUB = "/usr/bin/pygrub"
@@ -416,7 +424,7 @@ def md5sum(filename):
     """ Compute the md5sum of a file.  string -> string. """
     fd = open(filename, "r")
     try:
-        sumobj = md5.new()
+        sumobj = md5_new()
         while True:
             data = fd.read(1024 * 1024)
             if data == "":
