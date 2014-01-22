@@ -99,7 +99,9 @@ rounds = {
     }
 
 guest_installer_dir = "/opt/xensource/packages/files/guest-installer"
-mapfiles = [ f for f in os.listdir(guest_installer_dir) if f.endswith('.map') ]
+mapfiles = []
+if os.path.exists(guest_installer_dir):
+    mapfiles = [ f for f in os.listdir(guest_installer_dir) if f.endswith('.map') ]
 
 # We can sometimes tweak an installer's initrd to give it extra features, e.g.
 # CD installs in PV guests.  These dictionaries specify the cpio archive used
