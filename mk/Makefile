@@ -16,8 +16,6 @@ LGL_SOURCES := $(wildcard ../*.py)
 DATA_FILES := $(wildcard $(PROJECT_OUTPUTDIR)/rhel*/*initrd-additions*) \
 	$(wildcard $(PROJECT_OUTPUTDIR)/ubuntu*guest-installer/*initrd-additions*)
 
-PACKAGE_OUTPUT := $(MY_MAIN_PACKAGES)/linux-guest-loader-data-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm
-
 LGL_SPEC := linux-guest-loader.spec
 LGL_SRC_DIR := linux-guest-loader-$(LGL_VERSION)
 LGL_SRC := $(RPM_SOURCESDIR)/linux-guest-loader-$(LGL_VERSION).tar.gz
@@ -26,24 +24,20 @@ LGL_SRPM := linux-guest-loader-$(LGL_VERSION)-$(LGL_RELEASE).src.rpm
 LGL_STAMP := $(MY_OBJ_DIR)/.rpmbuild.lgl.stamp
 
 .PHONY: build
-build: $(LGL_STAMP) $(PACKAGE_OUTPUT) $(MY_OUTPUT_DIR)/linux-guest-loader.inc $(MY_SOURCES)/MANIFEST
-
-$(MY_SOURCES)/MANIFEST: $(MY_SOURCES_DIRSTAMP) $(RPM_BUILD_COOKIE)
-	( echo "$(COMPONENT) gpl file $(RPM_SRPMSDIR)/$(LGL_SRPM)" ; \
-	) >$@
+build: $(LGL_STAMP) $(MY_OUTPUT_DIR)/linux-guest-loader.inc
 
 $(MY_OUTPUT_DIR)/linux-guest-loader.inc: $(MY_OUTPUT_DIR)/.dirstamp
-	( echo LGL_PKG_NAME := linux-guest-loader ;\
+	{ echo LGL_PKG_NAME := linux-guest-loader ;\
 	  echo LGL_PKG_VERSION := $(LGL_VERSION)-$(LGL_RELEASE) ;\
 	  echo LGL_PKG_FILE := RPMS/noarch/linux-guest-loader-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm ;\
-	) >$@
+	} >$@
 
 .PHONY: pylint
 pylint:
 	run-pylint.sh $(LGL_SOURCES)
 
 .PHONY: sources
-sources: $(MY_SOURCES)/MANIFEST
+sources: $(LGL_SRC)
 
 .PHONY: clean
 clean:
@@ -79,5 +73,3 @@ $(LGL_STAMP): $(RPM_SRPMSDIR)/$(LGL_SRPM)
 	mv -f $(LGL_SRC).keep $(LGL_SRC)
 	touch $@
 
-$(PACKAGE_OUTPUT): $(MY_MAIN_PACKAGES)/.dirstamp
-	cp -fp $(RPM_RPMSDIR)/noarch/linux-guest-loader-data-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm $@
