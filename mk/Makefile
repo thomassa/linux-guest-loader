@@ -1,16 +1,9 @@
-USE_BRANDING := yes
-IMPORT_BRANDING := yes
-REPONAME :=linux-guest-loader
+REPONAME := linux-guest-loader
 include $(B_BASE)/common.mk
 include $(B_BASE)/rpmbuild.mk
 
--include $(MY_OBJ_DIR)/version.inc
-.PHONY: $(MY_OBJ_DIR)/version.inc
-$(MY_OBJ_DIR)/version.inc:
-	$(version-makefile) > $@
-	$(call git_cset_number,$(REPONAME)) >> $@
-	echo LGL_VERSION := \$$\(PLATFORM_VERSION\) >> $@
-	echo LGL_RELEASE := xs\$$\(CSET_NUMBER\) >> $@
+LGL_VERSION := 1.9.0
+LGL_RELEASE := $(shell $(shell $(call git_cset_number,$(REPONAME))); echo $$CSET_NUMBER)
 
 LGL_SOURCES := $(wildcard ../*.py)
 DATA_FILES := $(wildcard $(PROJECT_OUTPUTDIR)/rhel*/*initrd-additions*) \
@@ -26,7 +19,7 @@ LGL_STAMP := $(MY_OBJ_DIR)/.rpmbuild.lgl.stamp
 .PHONY: build
 build: $(LGL_STAMP) $(MY_OUTPUT_DIR)/linux-guest-loader.inc
 
-$(MY_OUTPUT_DIR)/linux-guest-loader.inc: $(MY_OUTPUT_DIR)/.dirstamp
+$(MY_OUTPUT_DIR)/linux-guest-loader.inc: $(MY_OUTPUT_DIR)/.dirstamp Makefile
 	{ echo LGL_PKG_NAME := linux-guest-loader ;\
 	  echo LGL_PKG_VERSION := $(LGL_VERSION)-$(LGL_RELEASE) ;\
 	  echo LGL_PKG_FILE := RPMS/noarch/linux-guest-loader-$(LGL_VERSION)-$(LGL_RELEASE).noarch.rpm ;\
@@ -51,7 +44,7 @@ $(LGL_SRC): $(LGL_SOURCES)
 	rm -rf $(MY_OBJ_DIR)/$(LGL_SRC_DIR)
 
 .SECONDARY: $(RPM_SPECSDIR)/%.spec
-$(RPM_SPECSDIR)/%.spec: *.spec.in
+$(RPM_SPECSDIR)/%.spec: *.spec.in Makefile
 	sed -e 's/@LGL_VERSION@/$(LGL_VERSION)/g' \
 	  -e 's/@LGL_RELEASE@/$(LGL_RELEASE)/g' \
 	  < $< \
