@@ -52,6 +52,7 @@ import gzip
 import traceback
 import logging
 import re
+import itertools
 import XenAPI
 import xcp.cmd
 import xcp.logger
@@ -95,7 +96,7 @@ RPC_SUCCESS = "Success"
 distros = { "rhlike" : DISTRO_RHLIKE, "sleslike" : DISTRO_SLESLIKE, "debianlike": DISTRO_DEBIANLIKE, "pygrub" : DISTRO_PYGRUB }
 
 rounds = {
-    DISTRO_RHLIKE: 1, DISTRO_SLESLIKE: 2, DISTRO_DEBIANLIKE: 1, DISTRO_PYGRUB: 1
+    DISTRO_RHLIKE: 2, DISTRO_SLESLIKE: 2, DISTRO_DEBIANLIKE: 1, DISTRO_PYGRUB: 1
     }
 
 guest_installer_dir = "/opt/xensource/packages/files/guest-installer"
@@ -866,7 +867,52 @@ def handle_second_boot(vm, img, args, other_config):
                     finally:
                         session.logout()
                     break
+  
+    elif distro == DISTRO_RHLIKE:
+        # Oracle 5.x uek kernel doesn't boot, so we have to override
+        # pygrub's default by setting PV-bootloader-args (with --entry N)
 
+        cmd = ["pygrub", "-q", "-l", img]
+        (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
+        if rc != 0:
+            raise PygrubError, rc, err
+        
+        # Get the title 'title:' lines from pygrub
+        p = re.compile('^title:')
+        titles = [l for l in out.splitlines() if p.search(l)]
+        
+        found_ole_5x = False
+        p = re.compile(r'Oracle.*el5uek', re.IGNORECASE)
+        idx = 0
+        
+        ole5uek_lst = [bool(p.search(t)) for t in titles]
+        found_ole_5x = any(ole5uek_lst)
+
+        # Get the (pygrub) indices for non el5uek kernel
+        indices = []
+        for (i, b) in itertools.izip(itertools.count(), ole5uek_lst):
+            if b:   # el5uek kernel, so skip the index
+                pass
+            else:
+                indices.append(i)
+        
+        if found_ole_5x:
+            if not indices:
+                raise Exception("Could not find non el5uek kernel")
+            else:
+                idx = indices[0]
+
+            xcp.logger.debug("RHEL_LIKE: Pygrub found Oracle 5.x .el5euk kernel")
+            
+            session = XenAPI.xapi_local()
+            session.login_with_password("", "")
+            try:
+                prepend_args += ["--entry", str(idx)]
+                vm_ref = session.xenapi.VM.get_by_uuid(vm)
+                if not never_latch:
+                    session.xenapi.VM.set_PV_bootloader_args(vm_ref, "--entry %s" % idx)                        
+            finally:
+                session.logout()
     else:
         raise UnsupportedInstallMethod
 
