@@ -698,9 +698,7 @@ def sles_first_boot_args(repo):
                 args = args + " install=%s/" % repo
             else:
                 args = args + " install=%s" % repo
-
-    args = args + " maxcpus=1"
-    return args
+    return args;
 
 def debian_first_boot_handler(vm, repo_url, other_config):
 
