@@ -48,7 +48,6 @@ import httplib
 import socket
 import tempfile
 import urllib2
-import gzip
 import traceback
 import logging
 import re
@@ -143,6 +142,7 @@ for f in mapfiles:
 
 pv_kernel_max_size =  32 * 1024 * 1024
 pv_initrd_max_size = 128 * 1024 * 1024
+copy_block_size    =   1 * 1024 * 1024
 
 #### EXCEPTIONS
 
@@ -197,6 +197,32 @@ def mount(dev, mountpoint, options = None, fstype = None):
 
 def umount(mountpoint):
     xcp.cmd.runCmd(["umount", mountpoint])
+
+def get_decompressor(filename):
+    archive = open(filename)
+    header = archive.read(2)
+    archive.close()
+
+    if header == "\037\213": # Gzip compressed
+        return "/bin/zcat"
+    elif header == "\x5d\x00": # Lzma compressed
+        return "/usr/bin/lzcat"
+    else: # Assume uncompressed
+        return None
+
+# Copy from one fd to another
+def copyfd(fromfd, tofd):
+    bytes_so_far = 0
+
+    while True:
+        block = fromfd.read(copy_block_size)
+        l = len(block)
+
+        if l == 0:
+            break
+
+        bytes_so_far += l
+        tofd.write(block)
 
 # Creation of an NfsRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
 # The umount is done automatically when the object goes out of scope
@@ -313,11 +339,15 @@ def fetchFile(source, dest):
 	else:
 	    raise
     fd_dest = open(dest, 'wb')
-    shutil.copyfileobj(fd, fd_dest)
-    fd.close()
-    if length is not None and length != fd_dest.tell():
-	raise IOError("Closed connection during download")
+
+    copyfd(fd, fd_dest)
+    dest_len = fd_dest.tell()
+
     fd_dest.close()
+    fd.close()
+
+    if length is not None and length != dest_len:
+	raise IOError("Closed connection during download")
 
 # Test existence of a file
 # just return True for "exists" or False for "does not exist"
@@ -383,44 +413,46 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
         session.logout()
 
 def unpack_cpio_initrd(filename, working_dir):
-    # we'll assume it's a gzipped cpio for now...
-    xcp.logger.debug("Unpacking " + filename)
-    cpio_archive = close_mkstemp(dir = "/tmp", prefix = "initrd-")
-    gz = open(filename)
-    start = gz.read(2)
-    if start == "\037\213":
-        gz.close()
-        gz = gzip.GzipFile(filename)
-    elif start == "\x5d\x00":
-        gz.close()
-        lz = subprocess.Popen(["/usr/bin/lzcat", filename], stdout = subprocess.PIPE)
-        gz = lz.stdout
+    xcp.logger.debug("Unpacking cpio " + filename)
+    prog = get_decompressor(filename)
+
+    if prog is not None:
+        decomp = subprocess.Popen([prog, filename], stdout = subprocess.PIPE)
+        source = decomp.stdout
     else:
-        gz.seek(0)
+        source = open(filename)
+
     cpio = subprocess.Popen(["/bin/cpio", "-idu", "--quiet"], cwd = working_dir,
                             stdin = subprocess.PIPE)
-    while True:
-        data = gz.read(1024 * 256)
-        if data == "":
-            break
-        cpio.stdin.write(data)
-    cpio.communicate()
-    gz.close()
+
+    copyfd(source, cpio.stdin)
+
+    cpio.stdin.close()
+    cpio.wait()
+
+    source.close()
+    if prog is not None:
+        decomp.wait()
 
 def mount_ext2_initrd(infile, outfile, working_dir):
-    xcp.logger.debug("Mounting " + infile)
-    # we'll assume it's a gzipped ext2 f/s for now...
-    fd = open(outfile, "w")
-    gz = gzip.GzipFile(infile)
+    xcp.logger.debug("Mounting ext2 " + infile)
+    prog = get_decompressor(infile)
 
-    while True:
-        data = gz.read(1024 * 256)
-        if data == "":
-            break
-        fd.write(data)
+    if prog is not None:
+        decomp = subprocess.Popen([prog, infile], stdout = subprocess.PIPE)
+        source = decomp.stdout
+    else:
+        source = open(infile)
 
-    fd.close()
-    gz.close()
+    dest = open(outfile, "w")
+
+    copyfd(source, dest)
+
+    dest.close()
+
+    source.close()
+    if prog is not None:
+        decomp.wait()
 
     mount(outfile, working_dir, options = ['loop'])
 
