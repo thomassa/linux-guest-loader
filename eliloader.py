@@ -507,6 +507,7 @@ def tweak_initrd(filename):
     return initrd_path
 
 def tweak_bootable_disk(vm):
+    if never_latch: return
     session = XenAPI.xapi_local()
     session.xenapi.login_with_password("", "")
     try:
