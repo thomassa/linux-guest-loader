@@ -192,10 +192,7 @@ def mount(dev, mountpoint, options = None, fstype = None):
         raise MountFailureException, cmd
 
 def umount(mountpoint):
-    rc = subprocess.Popen(['/bin/umount', mountpoint],
-                          stdout = subprocess.PIPE,
-                          stderr = subprocess.PIPE).wait()
-    return rc
+    xcp.cmd.runCmd(["umount", mountpoint])
 
 # Creation of an NfsRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
 # The umount is done automatically when the object goes out of scope
@@ -237,7 +234,7 @@ class NfsRepo:
         # os module may have already been unloaded
         import os
         if self.mntpoint:
-            xcp.cmd.runCmd(["umount", self.mntpoint])
+            umount(self.mntpoint)
             os.rmdir(self.mntpoint)
 
 # Creation of an CdromRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
@@ -262,7 +259,7 @@ class CdromRepo:
         # os module may have already been unloaded
         import os
         if self.mntpoint:
-            xcp.cmd.runCmd(["umount", self.mntpoint])
+            umount(self.mntpoint)
             os.rmdir(self.mntpoint)
 
 # Modified from host-installer.hg/util.py
