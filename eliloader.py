@@ -12,19 +12,19 @@
 # GNU Lesser General Public License for more details.
 
 ##
-# Bootloader for EL-based distros that support Xen. 
+# Bootloader for EL-based distros that support Xen.
 #
 # We keep all logic for booting these distros contained within this file
 # where possible.
 
 # Some brief documentation of the other-config keys this tool knows about:
 #
-# install-repository: Required.  Path to a repository; 'http', 'https', or 
+# install-repository: Required.  Path to a repository; 'http', 'https', or
 #    'nfs'.  Should be specified as would be used by the target installer, not
 #    including prefixes, e.g. method=.
 #
 # install-vnc:  Default: false.  Use VNC where available during the
-#    installation.  
+#    installation.
 #
 # install-vncpasswd:  Default: empty.  The VNC password to use, when providing
 #    one is possible via the command-line of the target distro
@@ -231,15 +231,15 @@ class NfsRepo:
             os.rmdir(self.mntpoint)
             self.mntpoint = None
             raise InvalidSource, "nfs repo %s" % repo
-    
+
     def __del__(self):
-        # if we're getting called due to an unhandled exception, the 
+        # if we're getting called due to an unhandled exception, the
         # os module may have already been unloaded
         import os
         if self.mntpoint:
             xcp.cmd.runCmd(["umount", self.mntpoint])
             os.rmdir(self.mntpoint)
-    
+
 # Creation of an CdromRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
 # The umount is done automatically when the object goes out of scope
 class CdromRepo:
@@ -256,9 +256,9 @@ class CdromRepo:
             os.rmdir(self.mntpoint)
             self.mntpoint = None
             raise InvalidSource, "cdrom repo %s" % img
-    
+
     def __del__(self):
-        # if we're getting called due to an unhandled exception, the 
+        # if we're getting called due to an unhandled exception, the
         # os module may have already been unloaded
         import os
         if self.mntpoint:
@@ -361,7 +361,7 @@ def canonicaliseOtherConfig(vm_uuid):
     rc = { 'install-repository': collect(other_config, 'install-repository'),
            'install-vnc':        collect(other_config, 'install-vnc', "false") in ["1", "true"],
            'install-vncpasswd':  collect(other_config, 'install-vncpasswd'),
-           'install-distro':     collect(other_config, 'install-distro', 'rhlike'), 
+           'install-distro':     collect(other_config, 'install-distro', 'rhlike'),
            'install-round':      collect(other_config, 'install-round', '1'),
            'install-arch':       collect(other_config, 'install-arch', 'i386'),
            'install-kernel':     collect(other_config, 'install-kernel', None),
@@ -411,7 +411,7 @@ def mount_ext2_initrd(infile, outfile, working_dir):
     # we'll assume it's a gzipped ext2 f/s for now...
     fd = open(outfile, "w")
     gz = gzip.GzipFile(infile)
-        
+
     while True:
         data = gz.read(1024 * 256)
         if data == "":
@@ -440,7 +440,7 @@ def md5sum(filename):
 #### INITRD TWEAKING
 
 def mkcpio(working_dir, output_file):
-    """ Make a cpio archive containg the files in working_dir, writing the 
+    """ Make a cpio archive containg the files in working_dir, writing the
     archive to output_file.  It will be uncompressed. """
 
     xcp.logger.debug("Building initrd from " + working_dir)
@@ -448,7 +448,7 @@ def mkcpio(working_dir, output_file):
     # set output_file to be a full path so that we don't create the output
     # file under the new working directory of the cpio process.
     output_file = os.path.realpath(output_file)
-    cpio = subprocess.Popen(["/bin/cpio", "-F", output_file, "-oH", "newc", 
+    cpio = subprocess.Popen(["/bin/cpio", "-F", output_file, "-oH", "newc",
                              "--quiet"], cwd = working_dir,
                             stdin = subprocess.PIPE, stdout = None)
 
@@ -471,7 +471,7 @@ def tweak_initrd(filename):
     initrd_path = None
 
     xcp.logger.debug(filename + " has MD5 " + digest)
-    
+
     if cpio_initrd_fixups.has_key(digest):
         # we can patch this initrd, let's unpack it to a temporary directory:
         xcp.logger.debug("Fixup with " + cpio_initrd_fixups[digest])
@@ -497,7 +497,7 @@ def tweak_initrd(filename):
         cpio_overlay = os.path.join(guest_installer_dir, ext2_initrd_fixups[digest])
         if not os.path.isfile(cpio_overlay):
             raise SupportPackageMissing, "Dom0 does not contain a required file: %s" % cpio_overlay
-        
+
         # unpack the vendor initrd, then unpack our changes over it:
         initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
         mount_ext2_initrd(filename, initrd_path, working_dir)
@@ -513,7 +513,7 @@ def tweak_bootable_disk(vm):
         # get all VBDs, set bootable = (device == 0):
         vm_ref = session.xenapi.VM.get_by_uuid(vm)
         vbds = session.xenapi.VM.get_VBDs(vm_ref)
-        
+
         for vbd in vbds:
             session.xenapi.VBD.set_bootable(vbd, session.xenapi.VBD.get_userdevice(vbd) == "0")
     finally:
@@ -547,7 +547,7 @@ def rhel_first_boot_handler(vm, repo_url):
     # Possibly apply tweaks to initrd.
     #
     # Currently, this adds support for graphical installation via XenCenter, and fixes
-    # installation via ISO (by making loader & anaconda recognise r/o blockdevs on xenbus 
+    # installation via ISO (by making loader & anaconda recognise r/o blockdevs on xenbus
     # as CDROM drives).  However, it could be used for more in future.
     #
     modified_ramdisk = tweak_initrd(ramdisk_file)
@@ -577,7 +577,7 @@ def sles_first_boot_handler(vm, repo_url, other_config):
         bootdir =      'boot/i386/'
         kernel_fname = 'vmlinuz-xenpae'
         initrd_fname = 'initrd-xenpae'
-        
+
     vmlinuz_url = repo_url + bootdir + kernel_fname
     vmlinuz_file = close_mkstemp(dir = BOOTDIR, prefix = "vmlinuz-")
     ramdisk_url = repo_url + bootdir + initrd_fname
@@ -589,9 +589,9 @@ def sles_first_boot_handler(vm, repo_url, other_config):
         os.unlink(vmlinuz_file)
         os.unlink(ramdisk_file)
         raise InvalidSource, "The repository specified did not contain a required file, %s." % e.name
-    
+
     print >> sys.stderr, "kernel %s and initrd %s from %s used" % (kernel_fname, initrd_fname, bootdir)
-    
+
     return vmlinuz_file, ramdisk_file
 
 # Return the extra arg needed by SLES kernel for it to locate installation media
@@ -690,16 +690,16 @@ def pygrub_first_boot_handler(vm_uuid, repo_url, other_config):
                 val = item[idx+1:]
 
                 ret[key] = val
-                
+
             else:
                 raise InvalidSource, "Syntax error parsing pygrub output, opening parenthesis missing"
         return ret
-    
+
     if other_config['install-repository'] == "cdrom":
         (rc, out, err) = xcp.cmd.runCmd([PYGRUB] + sys.argv[1:], True, True)
         if rc != 0:
             raise InvalidSource, "Error %d running %s" % (rc,PYGRUB)
-    
+
         output = pygrub_parse(out)
 
         if not output.has_key('kernel'):
@@ -709,11 +709,11 @@ def pygrub_first_boot_handler(vm_uuid, repo_url, other_config):
     else:
         if not other_config.has_key('install-kernel') or other_config['install-kernel'] is None:
             raise InvalidSource, "install-distro=pygrub requires install-kernel for network boot"
-        
+
         # download the kernel and ramdisk:
         vmlinuz_url = repo_url + other_config['install-kernel']
         vmlinuz_file = close_mkstemp(dir = BOOTDIR, prefix = "vmlinuz-")
-        
+
         if other_config.has_key('install-ramdisk') and other_config['install-ramdisk'] is not None:
             ramdisk_url = repo_url + other_config['install-ramdisk']
             ramdisk_file = close_mkstemp(dir = BOOTDIR, prefix = "ramdisk-")
@@ -750,9 +750,9 @@ def handle_first_boot(vm, img, args, other_config):
     # extract the kernel and ramdisk
 
     # sanity check repo:
-    if repo == "cdrom": 
+    if repo == "cdrom":
         pass
-    elif repo and True in [repo.startswith(x) for x in ['http', 'ftp', 'nfs']]: 
+    elif repo and True in [repo.startswith(x) for x in ['http', 'ftp', 'nfs']]:
         pass
     else:
         raise UnsupportedInstallMethod, \
@@ -818,7 +818,7 @@ def handle_first_boot(vm, img, args, other_config):
         print 'linux (kernel %s)(args "%s")' % (kernel, args)
 
 def handle_second_boot(vm, img, args, other_config):
-    distro = distros[other_config['install-distro']]    
+    distro = distros[other_config['install-distro']]
 
     prepend_args = [PYGRUB]
 
@@ -863,11 +863,11 @@ def handle_second_boot(vm, img, args, other_config):
                         prepend_args += ["--kernel", k, "--ramdisk", i]
                         vm_ref = session.xenapi.VM.get_by_uuid(vm)
                         if not never_latch:
-                            session.xenapi.VM.set_PV_bootloader_args(vm_ref, "--kernel %s --ramdisk %s" % (k, i))                        
+                            session.xenapi.VM.set_PV_bootloader_args(vm_ref, "--kernel %s --ramdisk %s" % (k, i))
                     finally:
                         session.logout()
                     break
-  
+
     elif distro == DISTRO_RHLIKE:
         # Oracle 5.x uek kernel doesn't boot, so we have to override
         # pygrub's default by setting PV-bootloader-args (with --entry N)
@@ -876,15 +876,15 @@ def handle_second_boot(vm, img, args, other_config):
         (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
         if rc != 0:
             raise PygrubError, rc, err
-        
+
         # Get the title 'title:' lines from pygrub
         p = re.compile('^title:')
         titles = [l for l in out.splitlines() if p.search(l)]
-        
+
         found_ole_5x = False
         p = re.compile(r'Oracle.*el5uek', re.IGNORECASE)
         idx = 0
-        
+
         ole5uek_lst = [bool(p.search(t)) for t in titles]
         found_ole_5x = any(ole5uek_lst)
 
@@ -895,7 +895,7 @@ def handle_second_boot(vm, img, args, other_config):
                 pass
             else:
                 indices.append(i)
-        
+
         if found_ole_5x:
             if not indices:
                 raise Exception("Could not find non el5uek kernel")
@@ -903,14 +903,14 @@ def handle_second_boot(vm, img, args, other_config):
                 idx = indices[0]
 
             xcp.logger.debug("RHEL_LIKE: Pygrub found Oracle 5.x .el5euk kernel")
-            
+
             session = XenAPI.xapi_local()
             session.login_with_password("", "")
             try:
                 prepend_args += ["--entry", str(idx)]
                 vm_ref = session.xenapi.VM.get_by_uuid(vm)
                 if not never_latch:
-                    session.xenapi.VM.set_PV_bootloader_args(vm_ref, "--entry %s" % idx)                        
+                    session.xenapi.VM.set_PV_bootloader_args(vm_ref, "--entry %s" % idx)
             finally:
                 session.logout()
     else:
@@ -936,7 +936,7 @@ def update_rounds(vm, current_round, rounds_required):
         # remove the install-round field: ignore errors as the key might
         # not be there and this is OK (default value is 1).
         session.xenapi.VM.remove_from_other_config(vm_ref, "install-round")
-    
+
         # write a new value in for install-round if appropriate:
         if current_round != rounds_required:
             session.xenapi.VM.add_to_other_config(vm_ref, "install-round", str(current_round + 1))
@@ -988,7 +988,7 @@ def main():
     # if all required rounds are completed
     other_config = canonicaliseOtherConfig(vm)
     current_round = int(other_config['install-round'])
-    
+
     # how many rounds are required?
     try:
         distro = distros[other_config['install-distro']]
