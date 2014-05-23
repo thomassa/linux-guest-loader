@@ -56,6 +56,7 @@ import itertools
 import XenAPI
 import xcp.cmd
 import xcp.logger
+from xen.lowlevel import xs
 
 sys.path.append("/usr/lib/python")
 
@@ -139,6 +140,9 @@ for f in mapfiles:
             raise Exception, "incorrect initrd_type in file %s/%s line %d: must be cpio or ext2" % \
                 (guest_installer_dir, fd.name, lineno)
     fd.close()
+
+pv_kernel_max_size =  32 * 1024 * 1024
+pv_initrd_max_size = 128 * 1024 * 1024
 
 #### EXCEPTIONS
 
@@ -949,6 +953,48 @@ def update_rounds(vm, current_round, rounds_required):
     finally:
         session.logout()
 
+def find_host_size_limits():
+    global pv_kernel_max_size, pv_initrd_max_size
+    store = xs.xs()
+
+    try:
+        pv_kernel_max_size = int(store.read("", "/mh/limits/pv-kernel-max-size"), 10 )
+    except (ValueError, TypeError, xs.Error):
+        pass
+
+    try:
+        pv_initrd_max_size = int(store.read("", "/mh/limits/pv-ramdisk-max-size"), 10 )
+    except (ValueError, TypeError, xs.Error):
+        pass
+
+    xcp.logger.debug("Host limits: kernel %d, ramdisk %d" %
+                     (pv_kernel_max_size, pv_initrd_max_size))
+
+def find_vm_size_limits(vm):
+    global pv_kernel_max_size, pv_initrd_max_size
+    store = xs.xs()
+
+    try:
+        domains = store.ls("", "/vm/" + vm + "/domains")
+        domid = int(domains[0], 10)
+    except (ValueError, TypeError, IndexError, xs.Error):
+        raise APILevelException("Unable to find domid for " + vm)
+
+    xs_path = "/local/domain/%s/platform/pv-%s-max-size"
+
+    try:
+        pv_kernel_max_size = int(store.read("", xs_path % (domid, "kernel")), 10)
+    except (ValueError, TypeError, xs.Error):
+        pass
+
+    try:
+        pv_initrd_max_size = int(store.read("", xs_path % (domid, "ramdisk")), 10)
+    except (ValueError, TypeError, xs.Error):
+        pass
+
+    xcp.logger.debug("VM limits: kernel %d, ramdisk %d" %
+                     (pv_kernel_max_size, pv_initrd_max_size))
+
 def main():
     if os.path.exists(DEBUG_SWITCH):
         xcp.logger.logToSyslog(level=logging.DEBUG)
@@ -986,6 +1032,9 @@ def main():
     # if all required rounds are completed
     other_config = canonicaliseOtherConfig(vm)
     current_round = int(other_config['install-round'])
+
+    find_host_size_limits()
+    find_vm_size_limits(vm)
 
     # how many rounds are required?
     try:
