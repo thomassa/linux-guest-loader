@@ -215,6 +215,8 @@ def copyfd(fromfd, tofd):
         bytes_so_far += l
         tofd.write(block)
 
+    return bytes_so_far
+
 # Creation of an NfsRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
 # The umount is done automatically when the object goes out of scope
 class NfsRepo:
@@ -297,7 +299,7 @@ def fetchFile(source, dest):
         raise InvalidSource, "Unknown source type."
 
     # This something that can be fetched using urllib2
-    xcp.logger.debug("Fetching " + source)
+    xcp.logger.debug("Fetching '%s' to '%s'" % (source, dest))
 
     # Actually get the file
     try:
@@ -331,8 +333,12 @@ def fetchFile(source, dest):
 	    raise
     fd_dest = open(dest, 'wb')
 
-    copyfd(fd, fd_dest)
-    dest_len = fd_dest.tell()
+    dest_len = copyfd(fd, fd_dest)
+
+    dbg = ""
+    if length is not None:
+        dbg = "  expecting %d bytes, " % (length, )
+    xcp.logger.debug(dbg + "got %d bytes" % (dest_len, ))
 
     fd_dest.close()
     fd.close()
@@ -404,7 +410,7 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
         session.logout()
 
 def unpack_cpio_initrd(filename, working_dir):
-    xcp.logger.debug("Unpacking cpio " + filename)
+    xcp.logger.debug("Unpacking cpio '%s' into '%s'" % (filename, working_dir))
     prog = get_decompressor(filename)
 
     if prog is not None:
@@ -416,7 +422,8 @@ def unpack_cpio_initrd(filename, working_dir):
     cpio = subprocess.Popen(["/bin/cpio", "-idu", "--quiet"], cwd = working_dir,
                             stdin = subprocess.PIPE)
 
-    copyfd(source, cpio.stdin)
+    dest_len = copyfd(source, cpio.stdin)
+    xcp.logger.debug("  got %d bytes" % (dest_len, ))
 
     cpio.stdin.close()
     cpio.wait()
@@ -426,7 +433,7 @@ def unpack_cpio_initrd(filename, working_dir):
         decomp.wait()
 
 def mount_ext2_initrd(infile, outfile, working_dir):
-    xcp.logger.debug("Mounting ext2 " + infile)
+    xcp.logger.debug("Mounting ext2 '%s' on '%s'" % (infile, outfile))
     prog = get_decompressor(infile)
 
     if prog is not None:
@@ -437,7 +444,8 @@ def mount_ext2_initrd(infile, outfile, working_dir):
 
     dest = open(outfile, "w")
 
-    copyfd(source, dest)
+    dest_len = copyfd(source, dest)
+    xcp.logger.debug("  got %d bytes" % (dest_len, ))
 
     dest.close()
 
@@ -1080,10 +1088,18 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except APILevelException, e:
+        for line in traceback.format_exc().split("\n"):
+            xcp.logger.debug("APIERROR: " + line)
         raise RuntimeError, e.apifmt()
     except PygrubError, x:
+        for line in traceback.format_exc().split("\n"):
+            xcp.logger.debug("PYERROR: " + line)
         raise RuntimeError, str(x)
     except UsageError, e:
         msg = "Invalid usage. Usage: eliloader --vm <vm> <image>"
         print >> sys.stderr, msg
         raise RuntimeError, "Invalid command line arguments."
+    except StandardError, e:
+        for line in traceback.format_exc().split("\n"):
+            xcp.logger.debug("ERROR: " + line)
+        raise
