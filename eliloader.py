@@ -59,15 +59,6 @@ from xen.lowlevel import xs
 
 sys.path.append("/usr/lib/python")
 
-try:
-    import hashlib
-    def md5_new():
-        return hashlib.md5()
-except ImportError:
-    import md5
-    def md5_new():
-        return md5.new()
-
 BOOTDIR = "/var/run/xend/boot"
 PYGRUB = "/usr/bin/pygrub"
 DEBUG_SWITCH = "/var/run/nonpersistent/linux-guest-loader.debug"
@@ -457,18 +448,12 @@ def mount_ext2_initrd(infile, outfile, working_dir):
     mount(outfile, working_dir, options = ['loop'])
 
 def md5sum(filename):
-    """ Compute the md5sum of a file.  string -> string. """
-    fd = open(filename, "r")
-    try:
-        sumobj = md5_new()
-        while True:
-            data = fd.read(1024 * 1024)
-            if data == "":
-                break
-            sumobj.update(data)
-        return sumobj.hexdigest()
-    finally:
-        fd.close()
+    p = subprocess.Popen(["md5sum", filename], stdout=subprocess.PIPE)
+    stdout, _ = p.communicate()
+
+    if p.returncode != 0:
+        raise ResourceNotFound(filename)
+    return stdout.split()[0]
 
 #### INITRD TWEAKING
 
