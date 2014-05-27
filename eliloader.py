@@ -154,6 +154,9 @@ class SupportPackageMissing(APILevelException):
 class InvalidSource(APILevelException):
     exname = "INVALID_SOURCE"
 
+class ResourceTooLarge(APILevelException):
+    exname = "LIMITS"
+
 class ResourceNotFound(Exception):
     def __init__(self, name):
         self.name = name
@@ -199,10 +202,10 @@ def get_decompressor(filename):
         return None
 
 # Copy from one fd to another
-def copyfd(fromfd, tofd):
+def copyfd(fromfd, tofd, limit):
     bytes_so_far = 0
 
-    while True:
+    while bytes_so_far <= limit:
         block = fromfd.read(copy_block_size)
         l = len(block)
 
@@ -211,8 +214,10 @@ def copyfd(fromfd, tofd):
 
         bytes_so_far += l
         tofd.write(block)
+    else:
+        return bytes_so_far, False
 
-    return bytes_so_far
+    return bytes_so_far, True
 
 # Creation of an NfsRepo object triggers a mount, and the mountpoint is stored int obj.mntpoint.
 # The umount is done automatically when the object goes out of scope
@@ -290,7 +295,7 @@ class CdromRepo:
 #
 # Raises ResourceNotFound or InvalidSource.
 #
-def fetchFile(source, dest):
+def fetchFile(source, dest, limit):
 
     if source[:5] != 'http:' and source[:5] != 'file:' and source[:4] != 'ftp:':
         raise InvalidSource, "Unknown source type."
@@ -330,15 +335,19 @@ def fetchFile(source, dest):
             raise
     fd_dest = open(dest, 'wb')
 
-    dest_len = copyfd(fd, fd_dest)
+    dest_len, success = copyfd(fd, fd_dest, limit)
 
     dbg = ""
     if length is not None:
         dbg = "  expecting %d bytes, " % (length, )
-    xcp.logger.debug(dbg + "got %d bytes" % (dest_len, ))
+    xcp.logger.debug(dbg + "got %d bytes, limit %d bytes" % (dest_len, limit))
 
     fd_dest.close()
     fd.close()
+
+    if not success:
+        raise ResourceTooLarge("File '%s' exceeds limit of %d bytes"
+                               % (source, limit))
 
     if length is not None and length != dest_len:
         raise IOError("Closed connection during download")
@@ -395,6 +404,30 @@ def canonicaliseOtherConfig(vm_uuid):
            'debian-release':     collect(other_config, 'debian-release') }
     return rc
 
+def propagatePostinstallLimits(session, vm):
+
+    platform = session.xenapi.VM.get_platform(vm)
+
+    try:
+        key_from = "pv-postinstall-kernel-max-size"
+        key_to   = "pv-kernel-max-size"
+        if key_from in platform:
+            session.xenapi.VM.remove_from_platform(vm, key_to)
+            session.xenapi.VM.add_to_platform(vm, key_to, platform[key_from])
+            session.xenapi.VM.remove_from_platform(vm, key_from)
+    except StandardError:
+        pass
+
+    try:
+        key_from = "pv-postinstall-ramdisk-max-size"
+        key_to   = "pv-ramdisk-max-size"
+        if key_from in platform:
+            session.xenapi.VM.remove_from_platform(vm, key_to)
+            session.xenapi.VM.add_to_platform(vm, key_to, platform[key_from])
+            session.xenapi.VM.remove_from_platform(vm, key_from)
+    except StandardError:
+        pass
+
 def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
     if never_latch: return
     session = XenAPI.xapi_local()
@@ -403,6 +436,7 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
         xcp.logger.debug("Switching to " + target_bootloader)
         vm = session.xenapi.VM.get_by_uuid(vm_uuid)
         session.xenapi.VM.set_PV_bootloader(vm, target_bootloader)
+        propagatePostinstallLimits(session, vm)
     finally:
         session.logout()
 
@@ -419,8 +453,8 @@ def unpack_cpio_initrd(filename, working_dir):
     cpio = subprocess.Popen(["/bin/cpio", "-idu", "--quiet"], cwd = working_dir,
                             stdin = subprocess.PIPE)
 
-    dest_len = copyfd(source, cpio.stdin)
-    xcp.logger.debug("  got %d bytes" % (dest_len, ))
+    dest_len, success = copyfd(source, cpio.stdin, pv_initrd_max_size)
+    xcp.logger.debug("  got %d bytes, limit %d bytes" % (dest_len, pv_initrd_max_size))
 
     cpio.stdin.close()
     cpio.wait()
@@ -428,6 +462,10 @@ def unpack_cpio_initrd(filename, working_dir):
     source.close()
     if prog is not None:
         decomp.wait()
+
+    if not success:
+        raise ResourceTooLarge("Unpacking cpio '%s' exceeds limit of %d bytes"
+                               % (filename, pv_initrd_max_size))
 
 def mount_ext2_initrd(infile, outfile, working_dir):
     xcp.logger.debug("Mounting ext2 '%s' on '%s'" % (infile, outfile))
@@ -441,14 +479,18 @@ def mount_ext2_initrd(infile, outfile, working_dir):
 
     dest = open(outfile, "w")
 
-    dest_len = copyfd(source, dest)
-    xcp.logger.debug("  got %d bytes" % (dest_len, ))
+    dest_len, success = copyfd(source, dest, pv_initrd_max_size)
+    xcp.logger.debug("  got %d bytes, limit %d bytes" % (dest_len, pv_initrd_max_size))
 
     dest.close()
 
     source.close()
     if prog is not None:
         decomp.wait()
+
+    if not success:
+        raise ResourceTooLarge("Unpacking cpio '%s' exceeds limit of %d bytes"
+                               % (infile, pv_initrd_max_size))
 
     mount(outfile, working_dir, options = ['loop'])
 
@@ -492,6 +534,7 @@ def tweak_initrd(filename):
 
     digest = md5sum(filename)
     initrd_path = None
+    _initrd_path = None
 
     xcp.logger.debug(filename + " has MD5 " + digest)
 
@@ -503,16 +546,26 @@ def tweak_initrd(filename):
         if not os.path.isfile(cpio_overlay):
             raise SupportPackageMissing, "Dom0 does not contain a required file: %s" % cpio_overlay
 
-        # unpack the vendor initrd, then unpack our changes over it:
-        unpack_cpio_initrd(filename, working_dir)
-        unpack_cpio_initrd(cpio_overlay, working_dir)
+        try:
+            try:
+                # unpack the vendor initrd, then unpack our changes over it:
+                unpack_cpio_initrd(filename, working_dir)
+                unpack_cpio_initrd(cpio_overlay, working_dir)
 
-        # now repack to make the final image:
-        initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
-        mkcpio(working_dir, initrd_path)
-
-        # clean up the working_dir tree
-        shutil.rmtree(working_dir)
+                # now repack to make the final image:
+                _initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
+                mkcpio(working_dir, _initrd_path)
+            except:
+                xcp.logger.debug("Cleaning '%s' and '%s'" % (working_dir, _initrd_path))
+                raise
+            else:
+                initrd_path = _initrd_path
+                _initrd_path = None
+        finally:
+            # clean up the working_dir tree
+            shutil.rmtree(working_dir)
+            if _initrd_path:
+                os.unlink(_initrd_path)
 
     elif ext2_initrd_fixups.has_key(digest):
         # we can patch this initrd, let's unpack it to a temporary directory:
@@ -521,11 +574,23 @@ def tweak_initrd(filename):
         if not os.path.isfile(cpio_overlay):
             raise SupportPackageMissing, "Dom0 does not contain a required file: %s" % cpio_overlay
 
-        # unpack the vendor initrd, then unpack our changes over it:
-        initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
-        mount_ext2_initrd(filename, initrd_path, working_dir)
-        unpack_cpio_initrd(cpio_overlay, working_dir)
-        umount(working_dir)
+        try:
+            try:
+                # unpack the vendor initrd, then unpack our changes over it:
+                _initrd_path = close_mkstemp(dir = BOOTDIR, prefix="tweaked-initrd-")
+                mount_ext2_initrd(filename, _initrd_path, working_dir)
+                unpack_cpio_initrd(cpio_overlay, working_dir)
+            except:
+                xcp.logger.debug("Cleaning '%s' and '%s'" % (working_dir, _initrd_path))
+                raise
+            else:
+                initrd_path = _initrd_path
+                _initrd_path = None
+        finally:
+            umount(working_dir)
+            shutil.rmtree(working_dir)
+            if _initrd_path:
+                os.unlink(_initrd_path)
 
     return initrd_path
 
@@ -546,6 +611,7 @@ def tweak_bootable_disk(vm):
 ##### DISTRO-SPECIFIC CODE
 
 def rhel_first_boot_handler(vm, repo_url):
+    need_clean = True
 
     if checkFile(repo_url + "images/xen/vmlinuz"):
         vmlinuz_suburl = "images/xen/vmlinuz"
@@ -561,23 +627,24 @@ def rhel_first_boot_handler(vm, repo_url):
     vmlinuz_url = repo_url + vmlinuz_suburl
     ramdisk_url = repo_url + ramdisk_suburl
     try:
-        fetchFile(vmlinuz_url, vmlinuz_file)
-        fetchFile(ramdisk_url, ramdisk_file)
-    except ResourceNotFound, e:
-        os.unlink(vmlinuz_file)
-        os.unlink(ramdisk_file)
-        raise InvalidSource, "Unable to access a required file in the specified repository: %s." % e.name
+        try:
+            fetchFile(vmlinuz_url, vmlinuz_file, pv_kernel_max_size)
+            fetchFile(ramdisk_url, ramdisk_file, pv_initrd_max_size)
 
-    # Possibly apply tweaks to initrd.
-    #
-    # Currently, this adds support for graphical installation via XenCenter, and fixes
-    # installation via ISO (by making loader & anaconda recognise r/o blockdevs on xenbus
-    # as CDROM drives).  However, it could be used for more in future.
-    #
-    modified_ramdisk = tweak_initrd(ramdisk_file)
-    if modified_ramdisk:
-        os.unlink(ramdisk_file)
-        ramdisk_file = modified_ramdisk
+            modified_ramdisk = tweak_initrd(ramdisk_file)
+            if modified_ramdisk:
+                os.unlink(ramdisk_file)
+                ramdisk_file = modified_ramdisk
+        except:
+            xcp.logger.debug("Cleaning '%s' and '%s'" % (vmlinuz_file, ramdisk_file))
+            raise
+        else:
+            need_clean = False
+
+    finally:
+        if need_clean:
+            os.unlink(vmlinuz_file)
+            os.unlink(ramdisk_file)
 
     return vmlinuz_file, ramdisk_file
 
@@ -607,14 +674,13 @@ def sles_first_boot_handler(vm, repo_url, other_config):
     ramdisk_url = repo_url + bootdir + initrd_fname
     ramdisk_file = close_mkstemp(dir = BOOTDIR, prefix = "ramdisk-")
     try:
-        fetchFile(vmlinuz_url, vmlinuz_file)
-        fetchFile(ramdisk_url, ramdisk_file)
-    except ResourceNotFound, e:
+        fetchFile(vmlinuz_url, vmlinuz_file, pv_kernel_max_size)
+        fetchFile(ramdisk_url, ramdisk_file, pv_initrd_max_size)
+    except:
+        xcp.logger.debug("Cleaning '%s' and '%s'" % (vmlinuz_file, ramdisk_file))
         os.unlink(vmlinuz_file)
         os.unlink(ramdisk_file)
-        raise InvalidSource, "The repository specified did not contain a required file, %s." % e.name
-
-    print >> sys.stderr, "kernel %s and initrd %s from %s used" % (kernel_fname, initrd_fname, bootdir)
+        raise
 
     return vmlinuz_file, ramdisk_file
 
@@ -672,12 +738,13 @@ def debian_first_boot_handler(vm, repo_url, other_config):
     ramdisk_file = close_mkstemp(dir = BOOTDIR, prefix = "ramdisk-")
 
     try:
-        fetchFile(vmlinuz_url, vmlinuz_file)
-        fetchFile(ramdisk_url, ramdisk_file)
-    except ResourceNotFound, e:
+        fetchFile(vmlinuz_url, vmlinuz_file, pv_kernel_max_size)
+        fetchFile(ramdisk_url, ramdisk_file, pv_initrd_max_size)
+    except:
+        xcp.logger.debug("Cleaning '%s' and '%s'" % (vmlinuz_file, ramdisk_file))
         os.unlink(vmlinuz_file)
         os.unlink(ramdisk_file)
-        raise InvalidSource, "Unable to access a required file in the specified repository: %s." % e.name
+        raise
 
     # Possibly apply tweaks to initrd.
     modified_ramdisk = tweak_initrd(ramdisk_file)
@@ -746,14 +813,15 @@ def pygrub_first_boot_handler(vm_uuid, repo_url, other_config):
             ramdisk_file = None
 
         try:
-            fetchFile(vmlinuz_url, vmlinuz_file)
+            fetchFile(vmlinuz_url, vmlinuz_file, pv_kernel_max_size)
             if ramdisk_url is not None and ramdisk_file is not None:
-                fetchFile(ramdisk_url, ramdisk_file)
-        except ResourceNotFound, e:
+                fetchFile(ramdisk_url, ramdisk_file, pv_initrd_max_size)
+        except:
             os.unlink(vmlinuz_file)
+            xcp.logger.debug("Cleaning '%s' and '%s'" % (vmlinuz_file, ramdisk_file))
             if ramdisk_file is not None:
                 os.unlink(ramdisk_file)
-            raise InvalidSource, "Unable to access a required file in the specified repository: %s." % e.name
+            raise
 
         return vmlinuz_file, ramdisk_file
 
