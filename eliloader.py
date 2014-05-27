@@ -43,9 +43,6 @@ import os
 import os.path
 import shutil
 import getopt
-import xmlrpclib
-import httplib
-import socket
 import tempfile
 import urllib2
 import traceback
@@ -82,7 +79,7 @@ RPC_SUCCESS = "Success"
     DISTRO_SLESLIKE,
     DISTRO_DEBIANLIKE,
     DISTRO_PYGRUB # Distro media bootable via pygrub
-) = range(4)
+    ) = range(4)
 
 distros = { "rhlike" : DISTRO_RHLIKE, "sleslike" : DISTRO_SLESLIKE, "debianlike": DISTRO_DEBIANLIKE, "pygrub" : DISTRO_PYGRUB }
 
@@ -303,34 +300,34 @@ def fetchFile(source, dest):
 
     # Actually get the file
     try:
-	fd = urllib2.urlopen(source)
-	try:
-	    length = int(fd.info().getheader('content-length', None));
-	except (ValueError, TypeError):
-	    length = None
+        fd = urllib2.urlopen(source)
+        try:
+            length = int(fd.info().getheader('content-length', None))
+        except (ValueError, TypeError):
+            length = None
     except OSError, e:
-	# file not found? (from file://)
-	if e.errno == 2:
-	    raise ResourceNotFound, source
-	else:
-	    # something else, we'll re-raise:
-	    raise
+        # file not found? (from file://)
+        if e.errno == 2:
+            raise ResourceNotFound, source
+        else:
+            # something else, we'll re-raise:
+            raise
     except urllib2.HTTPError, e:
-	# file not found?
-	if e.code == 404:
-	    raise ResourceNotFound, source
-	else:
-	    # something else, we'll re-raise:
-	    raise
+        # file not found?
+        if e.code == 404:
+            raise ResourceNotFound, source
+        else:
+            # something else, we'll re-raise:
+            raise
     except urllib2.URLError, e:
-	# bad hostname, malformed URL, etc.
-	raise ResourceNotFound, source
+        # bad hostname, malformed URL, etc.
+        raise ResourceNotFound, source
     except IOError, e:
-	# file not found? (from ftp://)
-	if e.errno == "ftp error":
-	    raise ResourceNotFound, source
-	else:
-	    raise
+        # file not found? (from ftp://)
+        if e.errno == "ftp error":
+            raise ResourceNotFound, source
+        else:
+            raise
     fd_dest = open(dest, 'wb')
 
     dest_len = copyfd(fd, fd_dest)
@@ -344,7 +341,7 @@ def fetchFile(source, dest):
     fd.close()
 
     if length is not None and length != dest_len:
-	raise IOError("Closed connection during download")
+        raise IOError("Closed connection during download")
 
 # Test existence of a file
 # just return True for "exists" or False for "does not exist"
@@ -359,13 +356,13 @@ def checkFile(source):
     xcp.logger.debug("Checking " + source)
     try:
         request = urllib2.Request(source)
-	if source[:5] == 'http:':
-	    request.get_method = lambda : 'HEAD'
-	fd = urllib2.urlopen(request)
-	fd.close()
-	return True
+        if source[:5] == 'http:':
+            request.get_method = lambda : 'HEAD'
+        fd = urllib2.urlopen(request)
+        fd.close()
+        return True
     except StandardError:
-	return False
+        return False
 
 def close_mkstemp(dir = None, prefix = 'tmp'):
     fd, name = tempfile.mkstemp(dir = dir, prefix = prefix)
@@ -403,7 +400,7 @@ def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
     session = XenAPI.xapi_local()
     session.login_with_password("", "")
     try:
-        xcp.logger.debug("Switching to " + target_bootloader);
+        xcp.logger.debug("Switching to " + target_bootloader)
         vm = session.xenapi.VM.get_by_uuid(vm_uuid)
         session.xenapi.VM.set_PV_bootloader(vm, target_bootloader)
     finally:
@@ -637,7 +634,7 @@ def sles_first_boot_args(repo):
                 args = args + " install=%s" % repo
 
     args = args + " maxcpus=1"
-    return args;
+    return args
 
 def debian_first_boot_handler(vm, repo_url, other_config):
 
@@ -1032,8 +1029,9 @@ def main():
         for a in ['--default_args=', '--extra_args=', '--args=']:
             while a in argv:
                 argv.remove(a)
-        opts, mandargs = getopt.getopt(argv, "q",
-            ["vm=", "logging", "quiet", "args=", "extra_args=", "default_args="])
+        opts, mandargs = getopt.getopt(
+            argv, "q", ["vm=", "logging", "quiet", "args=",
+                        "extra_args=", "default_args="])
     except getopt.GetoptError:
         raise UsageError
 
