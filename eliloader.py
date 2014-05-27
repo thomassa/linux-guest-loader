@@ -1086,7 +1086,7 @@ def find_vm_size_limits(vm):
                      (pv_kernel_max_size, pv_initrd_max_size))
 
 def main():
-    if os.path.exists(DEBUG_SWITCH):
+    if True: #os.path.exists(DEBUG_SWITCH):
         xcp.logger.logToSyslog(level=logging.DEBUG)
     else:
         xcp.logger.logToSyslog()
