@@ -976,7 +976,7 @@ def handle_second_boot(vm, img, args, other_config):
         idx = 0
 
         ole5uek_lst = [bool(p.search(t)) for t in titles]
-        found_ole_5x = any(ole5uek_lst)
+        found_ole_5x = True in ole5uek_lst
 
         # Get the (pygrub) indices for non el5uek kernel
         indices = []
