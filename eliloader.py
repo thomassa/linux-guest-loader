@@ -1123,7 +1123,10 @@ def main():
     current_round = int(other_config['install-round'])
 
     find_host_size_limits()
-    find_vm_size_limits(vm)
+    try:
+        find_vm_size_limits(vm)
+    except:
+        xcp.logger.debug("Ignorning exception while finding vm size limits")
 
     # how many rounds are required?
     try:
