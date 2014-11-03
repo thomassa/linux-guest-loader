@@ -59,7 +59,7 @@ sys.path.append("/usr/lib/python")
 BOOTDIR = "/var/run/xend/boot"
 PYGRUB = "/usr/bin/pygrub"
 DEBUG_SWITCH = "/var/run/nonpersistent/linux-guest-loader.debug"
-
+PROGRAM_NAME = "eliloader"
 
 never_latch = False
 # Set this if you want 2nd round booting to never stop.
@@ -380,7 +380,7 @@ def close_mkstemp(dir = None, prefix = 'tmp'):
 
 def canonicaliseOtherConfig(vm_uuid):
     session = XenAPI.xapi_local()
-    session.login_with_password("", "")
+    session.login_with_password("", "", "", PROGRAM_NAME)
     try:
         vm = session.xenapi.VM.get_by_uuid(vm_uuid)
         other_config = session.xenapi.VM.get_other_config(vm)
@@ -431,7 +431,7 @@ def propagatePostinstallLimits(session, vm):
 def switchBootloader(vm_uuid, target_bootloader = "pygrub"):
     if never_latch: return
     session = XenAPI.xapi_local()
-    session.login_with_password("", "")
+    session.login_with_password("", "", "", PROGRAM_NAME)
     try:
         xcp.logger.debug("Switching to " + target_bootloader)
         vm = session.xenapi.VM.get_by_uuid(vm_uuid)
@@ -597,7 +597,7 @@ def tweak_initrd(filename):
 def tweak_bootable_disk(vm):
     if never_latch: return
     session = XenAPI.xapi_local()
-    session.xenapi.login_with_password("", "")
+    session.xenapi.login_with_password("", "", "", PROGRAM_NAME)
     try:
         # get all VBDs, set bootable = (device == 0):
         vm_ref = session.xenapi.VM.get_by_uuid(vm)
@@ -948,7 +948,7 @@ def handle_second_boot(vm, img, args, other_config):
                     xcp.logger.debug("SLES_LIKE: success.")
 
                     session = XenAPI.xapi_local()
-                    session.login_with_password("", "")
+                    session.login_with_password("", "", "", PROGRAM_NAME)
                     try:
                         prepend_args += ["--kernel", k, "--ramdisk", i]
                         vm_ref = session.xenapi.VM.get_by_uuid(vm)
@@ -995,7 +995,7 @@ def handle_second_boot(vm, img, args, other_config):
             xcp.logger.debug("RHEL_LIKE: Pygrub found Oracle 5.x .el5euk kernel")
 
             session = XenAPI.xapi_local()
-            session.login_with_password("", "")
+            session.login_with_password("", "", "", PROGRAM_NAME)
             try:
                 prepend_args += ["--entry", str(idx)]
                 vm_ref = session.xenapi.VM.get_by_uuid(vm)
@@ -1019,7 +1019,7 @@ def handle_second_boot(vm, img, args, other_config):
 
 def update_rounds(vm, current_round, rounds_required):
     session = XenAPI.xapi_local()
-    session.xenapi.login_with_password("", "")
+    session.xenapi.login_with_password("", "", "", PROGRAM_NAME)
     try:
         vm_ref = session.xenapi.VM.get_by_uuid(vm)
 
