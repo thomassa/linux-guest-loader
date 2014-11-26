@@ -922,7 +922,7 @@ def handle_second_boot(vm, img, args, other_config):
         cmd = ["pygrub", "-q", "-n", img]
         (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
         if rc > 1:
-            raise PygrubError, rc, err
+            raise PygrubError(rc, err)
 
         if rc != 0:
             # need to emulate domUloader.  This is done by finding a kernel that
@@ -940,7 +940,7 @@ def handle_second_boot(vm, img, args, other_config):
                 cmd = ["pygrub", "-n", "--kernel", k, "--ramdisk", i, img]
                 (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
                 if rc > 1:
-                    raise PygrubError, rc, err
+                    raise PygrubError(rc, err)
 
                 if rc == 0:
                     # found it - make the setting permanent:
@@ -965,7 +965,7 @@ def handle_second_boot(vm, img, args, other_config):
         cmd = ["pygrub", "-q", "-l", img]
         (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
         if rc != 0:
-            raise PygrubError, rc, err
+            raise PygrubError(rc, err)
 
         # Get the title 'title:' lines from pygrub
         p = re.compile('^title:')
