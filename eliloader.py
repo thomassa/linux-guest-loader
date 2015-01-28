@@ -157,9 +157,9 @@ class InvalidSource(APILevelException):
 class ResourceTooLarge(APILevelException):
     exname = "LIMITS"
 
-class ResourceNotFound(Exception):
-    def __init__(self, name):
-        self.name = name
+class ResourceAccessError(Exception):
+    def __init__(self, source):
+        self.source = source
 
 class MountFailureException(Exception):
     pass
@@ -293,7 +293,7 @@ class CdromRepo:
 #  ftp://blah
 #  file://blah
 #
-# Raises ResourceNotFound or InvalidSource.
+# Raises ResourceAccessError or InvalidSource.
 #
 def fetchFile(source, dest, limit):
 
@@ -310,29 +310,14 @@ def fetchFile(source, dest, limit):
             length = int(fd.info().getheader('content-length', None))
         except (ValueError, TypeError):
             length = None
-    except OSError, e:
-        # file not found? (from file://)
-        if e.errno == 2:
-            raise ResourceNotFound, source
-        else:
-            # something else, we'll re-raise:
-            raise
-    except urllib2.HTTPError, e:
-        # file not found?
-        if e.code == 404:
-            raise ResourceNotFound, source
-        else:
-            # something else, we'll re-raise:
-            raise
-    except urllib2.URLError, e:
-        # bad hostname, malformed URL, etc.
-        raise ResourceNotFound, source
-    except IOError, e:
-        # file not found? (from ftp://)
-        if e.errno == "ftp error":
-            raise ResourceNotFound, source
-        else:
-            raise
+    # Catch various errors and reraise as ResourceAccessError
+    # urlopen can raise OSError if a file:// URL is not found,
+    # HTTPError for HTTP error response codes,
+    # URLError for network issues, bad hostname, malformed URL, etc., and
+    # IOError for some FTP errors.
+    except (OSError, urllib2.HTTPError, urllib2.URLError, IOError):
+        log_exception("ERROR: ", traceback.format_exc())
+        raise ResourceAccessError(source)
     fd_dest = open(dest, 'wb')
 
     dest_len, success = copyfd(fd, fd_dest, limit)
@@ -355,7 +340,7 @@ def fetchFile(source, dest, limit):
 # Test existence of a file
 # just return True for "exists" or False for "does not exist"
 #
-# Raises ResourceNotFound or InvalidSource.
+# Raises ResourceAccessError or InvalidSource.
 def checkFile(source):
 
     if source[:5] != 'http:' and source[:5] != 'file:' and source[:4] != 'ftp:':
@@ -499,8 +484,12 @@ def md5sum(filename):
     stdout, _ = p.communicate()
 
     if p.returncode != 0:
-        raise ResourceNotFound(filename)
+        raise InvalidSource("md5sum command failed.")
     return stdout.split()[0]
+
+def log_exception(prefix, backtrace):
+    for line in backtrace.strip().split("\n"):
+        xcp.logger.debug(prefix + line)
 
 #### INITRD TWEAKING
 
@@ -1155,18 +1144,17 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except APILevelException, e:
-        for line in traceback.format_exc().split("\n"):
-            xcp.logger.debug("APIERROR: " + line)
+        log_exception("APIERROR: ", traceback.format_exc())
         raise RuntimeError, e.apifmt()
+    except ResourceAccessError, e:
+        raise RuntimeError("Could not access %s" % e.source)
     except PygrubError, x:
-        for line in traceback.format_exc().split("\n"):
-            xcp.logger.debug("PYERROR: " + line)
+        log_exception("PYERROR: ", traceback.format_exc())
         raise RuntimeError, str(x)
     except UsageError, e:
         msg = "Invalid usage. Usage: eliloader --vm <vm> <image>"
         print >> sys.stderr, msg
         raise RuntimeError, "Invalid command line arguments."
     except StandardError, e:
-        for line in traceback.format_exc().split("\n"):
-            xcp.logger.debug("ERROR: " + line)
+        log_exception("ERROR: ", traceback.format_exc())
         raise
