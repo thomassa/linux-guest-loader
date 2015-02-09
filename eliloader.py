@@ -340,7 +340,7 @@ def fetchFile(source, dest, limit):
 # Test existence of a file
 # just return True for "exists" or False for "does not exist"
 #
-# Raises ResourceAccessError or InvalidSource.
+# Raises InvalidSource.
 def checkFile(source):
 
     if source[:5] != 'http:' and source[:5] != 'file:' and source[:4] != 'ftp:':
