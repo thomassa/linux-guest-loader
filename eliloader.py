@@ -355,9 +355,6 @@ def checkFile(source):
         fd = urllib2.urlopen(request)
         fd.close()
         return True
-    except (OSError, urllib2.HTTPError, urllib2.URLError, IOError):
-        log_exception("ERROR: ", traceback.format_exc())
-        raise ResourceAccessError(source)
     except StandardError:
         return False
 
