@@ -383,6 +383,7 @@ def canonicaliseOtherConfig(vm_uuid):
            'install-distro':     collect(other_config, 'install-distro', 'rhlike'),
            'install-round':      collect(other_config, 'install-round', '1'),
            'install-arch':       collect(other_config, 'install-arch', 'i386'),
+           'install-args':       collect(other_config, 'install-args', None),
            'install-kernel':     collect(other_config, 'install-kernel', None),
            'install-ramdisk':    collect(other_config, 'install-ramdisk', None),
            'install-proxy':      collect(other_config, 'install-proxy', None),
@@ -890,6 +891,10 @@ def handle_first_boot(vm, img, args, other_config):
         args += " vnc"
     if vncpasswd:
         args += " vncpassword=%s" % vncpasswd
+
+    # Or set user defined options if available
+    if other_config.has_key('install-args'):
+        args = other_config['install-args']
 
     if ramdisk is not None:
         print 'linux (kernel %s)(ramdisk %s)(args "%s")' % (kernel, ramdisk, args)
