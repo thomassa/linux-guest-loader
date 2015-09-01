@@ -893,8 +893,8 @@ def handle_first_boot(vm, img, args, other_config):
         args += " vncpassword=%s" % vncpasswd
 
     # Or set user defined options if available
-    if other_config.has_key('install-args'):
-        args = other_config['install-args']
+    if other_config['install-args'] is not None:
+        args += " " + other_config['install-args']
 
     if ramdisk is not None:
         print 'linux (kernel %s)(ramdisk %s)(args "%s")' % (kernel, ramdisk, args)
