@@ -195,9 +195,9 @@ def get_decompressor(filename):
     archive.close()
 
     if header == "\037\213": # Gzip compressed
-        return "/bin/zcat"
+        return ["/bin/zcat"]
     elif header == "\x5d\x00": # Lzma compressed
-        return "/usr/bin/lzcat"
+        return ["/usr/bin/xzcat", "--format=lzma"]
     else: # Assume uncompressed
         return None
 
@@ -431,7 +431,7 @@ def unpack_cpio_initrd(filename, working_dir):
     prog = get_decompressor(filename)
 
     if prog is not None:
-        decomp = subprocess.Popen([prog, filename], stdout = subprocess.PIPE)
+        decomp = subprocess.Popen(prog + [filename], stdout = subprocess.PIPE)
         source = decomp.stdout
     else:
         source = open(filename)
@@ -458,7 +458,7 @@ def mount_ext2_initrd(infile, outfile, working_dir):
     prog = get_decompressor(infile)
 
     if prog is not None:
-        decomp = subprocess.Popen([prog, infile], stdout = subprocess.PIPE)
+        decomp = subprocess.Popen(prog + [infile], stdout = subprocess.PIPE)
         source = decomp.stdout
     else:
         source = open(infile)
