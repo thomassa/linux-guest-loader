@@ -57,7 +57,9 @@ from xen.lowlevel import xs
 sys.path.append("/usr/lib/python")
 
 BOOTDIR = "/var/run/xend/boot"
-PYGRUB = "/usr/bin/pygrub"
+PYGRUB_PATH = "/usr/bin/pygrub"
+PYGRUB_SIMPLE_FORMAT = "--output-format=simple"
+PYGRUB_CMD = [PYGRUB_PATH, PYGRUB_SIMPLE_FORMAT]
 DEBUG_SWITCH = "/var/run/nonpersistent/linux-guest-loader.debug"
 PROGRAM_NAME = "eliloader"
 
@@ -746,45 +748,47 @@ def debian_first_boot_args(repo):
     return ""
 
 def pygrub_first_boot_handler(vm_uuid, repo_url, other_config):
-    def pygrub_parse(s):
-        if not s.startswith("linux "):
-            raise InvalidSource, "Syntax error parsing pygrub output, linux prefix missing"
+    RAMDISK = "ramdisk"
+    KERNEL = "kernel"
 
-        s = s[6:]
-
-        ret = {'ramdisk': None, 'args': None}
-
-        while s != "":
-            if s[0] == "(":
-                idx = s.find(")")
-                if idx == -1:
-                    raise InvalidSource, "Syntax error parsing pygrub output, closing parenthesis missing"
-                item = s[1:idx]
-                s = s[idx+1:]
-
-                idx = item.find(" ")
-                if idx == -1:
-                    raise InvalidSource, "Syntax error parsing pygrub output, key value separator missing"
-                key = item[:idx]
-                val = item[idx+1:]
-
-                ret[key] = val
-
-            else:
-                raise InvalidSource, "Syntax error parsing pygrub output, opening parenthesis missing"
+    def pygrub_parse_simple(s):
+        # The string to parse comes from pygrub, which builds it based on
+        # reading and processing the grub configuration from the guest's disc.
+        # Therefore it may contain malicious content from the guest if pygrub
+        # has not cleaned it up sufficiently.
+        # Example of a valid three-line string to parse, with blank third line:
+        # kernel <kernel:/vmlinuz-2.6.18-412.el5xen>
+        # args ro root=/dev/VolGroup00/LogVol00 console=ttyS0,115200n8
+        #
+        valid_keys = [RAMDISK, KERNEL, "args"]
+        ret = {}
+        for line in s.splitlines():
+            if line == "": # pygrub always adds a blank line at the end.
+                continue
+            if " " not in line:
+                raise InvalidSource, "Syntax error parsing pygrub output, key value separator missing in %s" % line
+            key, val = line.split(" ", 1)
+            if key not in valid_keys:
+                raise InvalidSource, "Unrecognised start of line when parsing bootloader result: line=%s" % line
+            if ret.has_key(key):
+                raise InvalidSource, "More than one %s line when parsing bootloader result %s" % (key, s)
+            ret[key] = val
         return ret
 
     if other_config['install-repository'] == "cdrom":
-        (rc, out, err) = xcp.cmd.runCmd([PYGRUB] + sys.argv[1:], True, True)
+        (rc, out, err) = xcp.cmd.runCmd(PYGRUB_CMD + sys.argv[1:], True, True)
         if rc != 0:
-            raise InvalidSource, "Error %d running %s" % (rc,PYGRUB)
+            raise InvalidSource, "Error %d running %s" % (rc,PYGRUB_PATH)
 
-        output = pygrub_parse(out)
+        output = pygrub_parse_simple(out)
 
-        if not output.has_key('kernel'):
-            raise InvalidSource, "No kernel in pygrub output"
+        if not output.has_key(KERNEL):
+            raise InvalidSource, "No kernel in pygrub output %s" % output
+        if not output.has_key(RAMDISK):
+            output[RAMDISK] = None
 
-        return output['kernel'], output['ramdisk']
+        # Return only kernel and ramdisk, discarding the "args".
+        return output[KERNEL], output[RAMDISK]
     else:
         if not other_config.has_key('install-kernel') or other_config['install-kernel'] is None:
             raise InvalidSource, "install-distro=pygrub requires install-kernel for network boot"
@@ -897,15 +901,14 @@ def handle_first_boot(vm, img, args, other_config):
         args += " " + other_config['install-args']
 
     if ramdisk is not None:
-        print 'linux (kernel %s)(ramdisk %s)(args "%s")' % (kernel, ramdisk, args)
+        print 'kernel %s\nramdisk %s\nargs %s' % (kernel, ramdisk, args)
     else:
-        print 'linux (kernel %s)(args "%s")' % (kernel, args)
+        print 'kernel %s\nargs %s' % (kernel, args)
 
 def handle_second_boot(vm, img, args, other_config):
     distro = distros[other_config['install-distro']]
 
-    prepend_args = [PYGRUB]
-
+    prepend_args = PYGRUB_CMD
 
     if distro == DISTRO_SLESLIKE:
         # SLES 9/10 installers do not create /boot/grub/menu.lst when installing on top of XEN
@@ -913,7 +916,7 @@ def handle_second_boot(vm, img, args, other_config):
         # If pygrub with no options fails then this must be one of the problematic versions, in
         # which case /we/ need to tell pygrub where to find the kernel and initrd.
 
-        cmd = ["pygrub", "-q", "-n", img]
+        cmd = PYGRUB_CMD + ["-q", "-n", img]
         (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
         if rc > 1:
             raise PygrubError(rc, err)
@@ -931,7 +934,7 @@ def handle_second_boot(vm, img, args, other_config):
             xcp.logger.debug("SLES_LIKE: Pygrub failed, trying again..")
             for k, i in [ ("/%s" % kernel, "/%s" % initrd ), ("/boot/%s" % kernel , "/boot/%s" % initrd ) ]:
                 xcp.logger.debug("SLES_LIKE: Trying %s and %s" % (k, i) )
-                cmd = ["pygrub", "-n", "--kernel", k, "--ramdisk", i, img]
+                cmd = PYGRUB_CMD + ["-n", "--kernel", k, "--ramdisk", i, img]
                 (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
                 if rc > 1:
                     raise PygrubError(rc, err)
@@ -956,7 +959,7 @@ def handle_second_boot(vm, img, args, other_config):
         # Oracle 5.x uek kernel doesn't boot, so we have to override
         # pygrub's default by setting PV-bootloader-args (with --entry N)
 
-        cmd = ["pygrub", "-q", "-l", img]
+        cmd = PYGRUB_CMD + ["-q", "-l", img]
         (rc, out, err) = xcp.cmd.runCmd(cmd, True, True)
         if rc != 0:
             raise PygrubError(rc, err)
@@ -1009,7 +1012,7 @@ def handle_second_boot(vm, img, args, other_config):
         switchBootloader(vm)
         update_rounds(vm, 2, 2)
     xcp.logger.debug("Launching pygrub for real..")
-    os.execv(PYGRUB, prepend_args + sys.argv[1:])
+    os.execv(PYGRUB_PATH, prepend_args + sys.argv[1:])
 
 def update_rounds(vm, current_round, rounds_required):
     session = XenAPI.xapi_local()
